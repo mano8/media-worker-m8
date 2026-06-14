@@ -1,0 +1,75 @@
+# media-worker-m8 — ClamAV daemon + ARQ worker.
+#
+# This stack attaches to the hardened media stack's networks (defined in
+# media-service-m8/docker_compose/hardened_media_m8) so the worker can reach the
+# media-owned Redis (ARQ queue), MinIO (object bytes), and the media-service
+# internal API. Bring the hardened media stack up first.
+#
+#   docker compose --env-file worker.env up -d --build
+#
+# ClamAV ships no signatures in the base image; the freshclam side of the
+# official image populates the mounted volume on first start, so the daemon may
+# report unhealthy for a few minutes until the database is downloaded.
+
+services:
+  clamav:
+    image: clamav/clamav:1.4
+    # The official image runs both clamd (TCP 3310) and freshclam (DB updates).
+    volumes:
+      - clamav_db:/var/lib/clamav        # persist the freshclam signature DB
+    healthcheck:
+      # `clamdcheck.sh` pings the running daemon via clamdscan.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s                  # allow first freshclam download
+    restart: unless-stopped
+    networks:
+      - app_net                           # egress for freshclam DB updates
+
+  worker:
+    build:
+      context: ../
+      dockerfile: ./worker/Dockerfile
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+    env_file:
+      - ./worker.env
+    volumes:
+      - ../worker:/opt/worker
+      - ./worker.env:/opt/worker/.env:ro
+    depends_on:
+      clamav:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app_net                           # media-service API + MinIO + clamav
+      - data_net                          # media-owned Redis (ARQ queue)
+
+volumes:
+  clamav_db:
+
+# These networks are created by the hardened media stack; join them as external.
+networks:
+  app_net:
+    external: true
+    name: hardened_m8_app_net
+  data_net:
+    external: true
+    name: hardened_media_m8_data_net
