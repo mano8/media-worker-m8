@@ -1,1 +1,109 @@
 # media-worker-m8
+
+Async [ARQ](https://arq-docs.helpmanual.io/) worker for background media jobs in
+the M8 platform. It consumes jobs enqueued by **media-service-m8** from the
+media-owned Redis and runs two tasks:
+
+| Task | Trigger | What it does |
+| --- | --- | --- |
+| `scan_object` | object upload completes | Antivirus-scan the bytes (ClamAV). Clean → report `CLEAN`; infected → purge the object and report `QUARANTINED`. |
+| `generate_variants` | a variant job is requested | Render image variants with `imgtools_m8`, write them to object storage, and register each one. |
+
+The worker owns **no database**. It reads/writes object bytes through the shared
+[`media-sdk-m8`](../media-sdk-m8) storage client and reports results to
+media-service over its internal HTTP API using a shared bearer service token.
+It is the **sole `imgtools_m8` consumer** — neither media-service nor the SDK
+import imgtools.
+
+---
+
+## Architecture
+
+```
+                     enqueue (ARQ / media Redis)
+ media-service-m8  ───────────────────────────────▶  media-worker-m8
+        ▲                                                   │
+        │  POST /v1/internal/objects/{id}/scan-result       │ get/put/remove bytes
+        │  POST /v1/internal/objects/{id}/variants          ▼
+        │  PATCH /v1/internal/variant-jobs/{id}          MinIO  (via media-sdk-m8)
+        └───────────────  (Bearer service token)  ──────────┘
+                                                            │ INSTREAM (TCP 3310)
+                                                            ▼
+                                                    clamav (clamd daemon)
+```
+
+* **Async everywhere.** Tasks are coroutines; the synchronous MinIO calls run in
+  a thread via `asyncio.to_thread` so the event loop never blocks (mirroring
+  `imgtools_m8.process_image_async`, which offloads the CPU pipeline to a
+  threadpool).
+* **Pluggable scanner.** `scan_object` depends only on the `Scanner` protocol;
+  the default `ClamAVScanner` is a thin clamd *client* (no virus DB or ClamAV
+  binary bundled in the image — the `clamav` service owns those).
+* **Worker needs no preset/key knowledge.** media-service builds every
+  `VariantSpec` (imgtools-shaped `output_options` + `target_bucket`/`target_key`)
+  inside the `VariantJobPayload`; the worker just renders, stores, and registers.
+
+---
+
+## Package layout
+
+| Module | Responsibility |
+| --- | --- |
+| `worker/config.py` | `WorkerConfig` (pydantic-settings) read from the worker's **own** env; builds the SDK `ObjectStorageConfig`. |
+| `worker/scanner.py` | `Scanner` protocol, `ScanVerdict`, `ClamAVScanner` (TCP clamd), `get_scanner` factory. |
+| `worker/media_types.py` | `content_type_for_format` — imgtools format name → MIME type. |
+| `worker/tasks.py` | `scan_object` / `generate_variants` task functions + internal HTTP callbacks. |
+| `worker/settings.py` | ARQ `WorkerSettings` + `on_startup`/`on_shutdown` resource wiring. |
+
+---
+
+## Configuration
+
+Copy `worker/.env.example` to `worker/.env`. Every secret stays the literal
+`changethis` in the example (fail-closed); set real values only in `.env`.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `MEDIA_API_URL` | `http://media-service:8000/media` | Base URL **including** the API prefix; the worker appends `/v1/internal/…`. |
+| `MEDIA_INTERNAL_SERVICE_TOKEN` | `changethis` | Must match media-service; high-entropy in prod. |
+| `MEDIA_REDIS_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_NAMESPACE` | `media_redis_cache` / `6379` / `appuser` / – / `media` | Media-owned Redis (ARQ queue). |
+| `MINIO_HOST` / `_PORT` / `_USE_SSL` / `_REGION` / `_ACCESS_KEY` / `_SECRET_KEY` | `minio` / `9000` / `false` / `eu-west-1` / – / – | Object storage. |
+| `CLAMAV_HOST` / `_PORT` / `_TIMEOUT_SECONDS` | `clamav` / `3310` / `120` | clamd daemon address. |
+| `WORKER_MAX_TRIES` / `_JOB_TIMEOUT_SECONDS` / `_KEEP_RESULT_SECONDS` | `5` / `300` / `3600` | ARQ tuning. |
+
+---
+
+## Running
+
+### Locally
+
+```bash
+pip install -r worker/requirements_dev.txt
+arq worker.settings.WorkerSettings
+```
+
+### Docker Compose
+
+Brings up the `clamav` daemon + the worker, attached to the hardened media
+stack's networks (bring that stack up first). On first boot ClamAV downloads its
+signature database via freshclam, so the daemon may be unhealthy for a few
+minutes.
+
+```bash
+cd docker_compose
+cp worker.env.example worker.env   # then set real secrets
+docker compose --env-file worker.env up -d --build
+```
+
+---
+
+## Development
+
+```bash
+ruff format . && ruff check . && bandit -r worker
+pytest tests/ -v --cov=worker --cov-report=term-missing --cov-fail-under=100
+```
+
+Tests are self-contained: the live seams (clamd socket, imgtools render, MinIO,
+the media-service HTTP API) are replaced with fakes, so no running stack is
+needed. Line **and** branch coverage are held at **100%**.

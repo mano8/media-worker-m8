@@ -149,9 +149,13 @@ activemq-data/
 
 # Environments
 .env
+worker.env
 .envrc
 .venv
 env/
+
+# Local-only agent instructions (never committed)
+CLAUDE.md
 venv/
 ENV/
 env.bak/

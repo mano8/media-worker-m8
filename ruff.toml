@@ -1,0 +1,7 @@
+line-length = 88
+
+exclude = [
+    ".git",
+    "__pycache__",
+    "docker_compose",   # infrastructure templates
+]
