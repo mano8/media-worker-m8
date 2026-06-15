@@ -47,3 +47,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ruff/mypy/bandit clean; **100% line + branch coverage** (32 tests).
 - `worker/.env.example` and `docker_compose/worker.env.example` (all secrets the
   literal `changethis`, with rules in comments).
+
+### Changed
+
+- Bumped `arq>=0.28.0` (from `>=0.26.0`) — adds Python 3.14 support (the
+  `worker/Dockerfile` base image) and pulls the cron-freeze (0.26.3) and
+  task-retry race-condition (0.26.2) fixes; no API changes. Pinned `redis` to
+  `>=5.3.1,<6.0.0`, making arq's hard `redis<6` constraint explicit/fail-closed.
