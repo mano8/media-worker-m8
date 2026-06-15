@@ -13,7 +13,7 @@
 
 services:
   clamav:
-    image: clamav/clamav:1.4
+    image: clamav/clamav:1.5-debian13-slim
     # The official image runs both clamd (TCP 3310) and freshclam (DB updates).
     volumes:
       - clamav_db:/var/lib/clamav        # persist the freshclam signature DB

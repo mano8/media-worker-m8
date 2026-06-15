@@ -11,7 +11,8 @@ clamd>=1.0.2
 imgtools_m8>=2.1.0
 
 # Shared media SDK: object-storage client + producer↔consumer job contracts
-media-sdk-m8>=0.1.0
+# Track the latest SDK so the worker stays aligned with the shared contract set.
+media-sdk-m8>=0.3.0
 
 minio>=7.2.18
 

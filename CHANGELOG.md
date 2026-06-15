@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Pin **`media-sdk-m8>=0.3.0`** (from `>=0.1.0`) to stay aligned with the latest
+  shared SDK. 0.3.0 adds the `OutboxEventPayload` webhook contract used by
+  media-service-m8 (Phase 16); the worker's consumed contracts
+  (`ScanJobPayload` / `VariantJobPayload`) and the storage client are unchanged,
+  so this is a floor bump with no code change.
+
 ### Added
 
 - Bootstrapped `media-worker-m8` — the async [ARQ](https://arq-docs.helpmanual.io/)
