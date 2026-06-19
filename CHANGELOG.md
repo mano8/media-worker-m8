@@ -8,11 +8,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Pin **`media-sdk-m8>=0.3.0`** (from `>=0.1.0`) to stay aligned with the latest
-  shared SDK. 0.3.0 adds the `OutboxEventPayload` webhook contract used by
-  media-service-m8 (Phase 16); the worker's consumed contracts
-  (`ScanJobPayload` / `VariantJobPayload`) and the storage client are unchanged,
-  so this is a floor bump with no code change.
+- Pin **`media-sdk-m8>=0.4.0`** (from `>=0.1.0`) to stay aligned with the latest
+  shared SDK. 0.3.0 added the `OutboxEventPayload` webhook contract; 0.4.0 adds
+  the chunked `ObjectStorage.stream_object` read primitive (used by
+  media-service-m8 for streaming SHA-256 verification, plan item 6.x.3). The
+  worker's consumed contracts (`ScanJobPayload` / `VariantJobPayload`) and its
+  storage-client usage are unchanged, so this remains a floor bump with no code
+  change. Version bumped to 0.2.1.
 
 ### Added
 
