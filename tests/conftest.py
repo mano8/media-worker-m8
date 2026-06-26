@@ -26,6 +26,7 @@ for _k, _v in _TEST_ENV.items():
     os.environ.setdefault(_k, _v)
 
 SERVICE_TOKEN = _TEST_ENV["MEDIA_INTERNAL_SERVICE_TOKEN"]
+WORKER_CLIENT_ID = "media-worker"  # matches WorkerConfig default
 
 import pytest  # noqa: E402
 

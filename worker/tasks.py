@@ -32,8 +32,11 @@ JOB_STATUS_FAILED = "failed"
 
 
 def _auth_headers(config: WorkerConfig) -> dict[str, str]:
-    """Bearer-token header for internal media-service callbacks."""
-    return {"Authorization": f"Bearer {config.service_token}"}
+    """Auth headers for internal media-service callbacks."""
+    return {
+        "Authorization": f"Bearer {config.service_token}",
+        "X-Worker-Client": config.WORKER_CLIENT_ID,
+    }
 
 
 async def _post_scan_result(ctx: dict[str, Any], object_id: Any, status: str) -> None:

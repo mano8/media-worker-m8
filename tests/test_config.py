@@ -1,6 +1,7 @@
 """Tests for worker.config — env-driven settings + SDK config building."""
 
-from pydantic import SecretStr
+import pytest
+from pydantic import SecretStr, ValidationError
 
 from media_sdk_m8 import ObjectStorageConfig
 
@@ -57,3 +58,33 @@ def test_get_config_is_cached():
     first = get_config()
     second = get_config()
     assert first is second
+
+
+def test_worker_client_id_default():
+    cfg = WorkerConfig()
+    assert cfg.WORKER_CLIENT_ID == "media-worker"
+
+
+def test_credential_isolation_token_not_redis_password():
+    with pytest.raises(ValidationError, match="MEDIA_INTERNAL_SERVICE_TOKEN"):
+        WorkerConfig(
+            MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("SharedSecret!1secure"),
+            MEDIA_REDIS_PASSWORD=SecretStr("SharedSecret!1secure"),
+        )
+
+
+def test_credential_isolation_token_not_minio_key():
+    with pytest.raises(ValidationError, match="MEDIA_INTERNAL_SERVICE_TOKEN"):
+        WorkerConfig(
+            MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("SharedSecret!1secure"),
+            MINIO_SECRET_KEY=SecretStr("SharedSecret!1secure"),
+        )
+
+
+def test_credential_isolation_distinct_credentials_accepted():
+    cfg = WorkerConfig(
+        MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("ServiceToken!1secure"),
+        MEDIA_REDIS_PASSWORD=SecretStr("RedisPass!1secure"),
+        MINIO_SECRET_KEY=SecretStr("MinioKey!1secure"),
+    )
+    assert cfg.service_token == "ServiceToken!1secure"

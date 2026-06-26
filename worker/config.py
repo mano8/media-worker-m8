@@ -11,7 +11,7 @@ env so the storage client stays settings-agnostic.
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from media_sdk_m8 import ObjectStorageConfig
@@ -34,9 +34,13 @@ class WorkerConfig(BaseSettings):
     #: Base URL of media-service including its API prefix (e.g. ``…:8000/media``).
     #: The worker appends ``/v1/internal/…`` to reach the service-token routes.
     MEDIA_API_URL: str = "http://media-service:8000/media"
-    #: Shared bearer token presented on every internal callback. Compared with
+    #: Bearer token presented on every internal callback. Compared with
     #: ``secrets.compare_digest`` on the service side; high-entropy in prod.
+    #: Must not equal MEDIA_REDIS_PASSWORD or MINIO_SECRET_KEY.
     MEDIA_INTERNAL_SERVICE_TOKEN: SecretStr = SecretStr("changethis")
+    #: Stable identity sent as ``X-Worker-Client`` on every callback so
+    #: media-service can attribute requests to this specific worker instance.
+    WORKER_CLIENT_ID: str = "media-worker"
     #: Per-request timeout (seconds) for internal HTTP callbacks.
     MEDIA_API_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0)
 
@@ -66,6 +70,21 @@ class WorkerConfig(BaseSettings):
     WORKER_MAX_TRIES: int = Field(default=5, ge=1)
     WORKER_JOB_TIMEOUT_SECONDS: int = Field(default=300, ge=1)
     WORKER_KEEP_RESULT_SECONDS: int = Field(default=3600, ge=0)
+
+    @model_validator(mode="after")
+    def _assert_token_not_reused(self) -> "WorkerConfig":
+        token = self.MEDIA_INTERNAL_SERVICE_TOKEN.get_secret_value()
+        if self.MEDIA_REDIS_PASSWORD is not None:
+            if token == self.MEDIA_REDIS_PASSWORD.get_secret_value():
+                raise ValueError(
+                    "MEDIA_INTERNAL_SERVICE_TOKEN must not equal MEDIA_REDIS_PASSWORD"
+                )
+        minio_key = self.MINIO_SECRET_KEY.get_secret_value()
+        if minio_key and token == minio_key:
+            raise ValueError(
+                "MEDIA_INTERNAL_SERVICE_TOKEN must not equal MINIO_SECRET_KEY"
+            )
+        return self
 
     @property
     def redis_password(self) -> str | None:

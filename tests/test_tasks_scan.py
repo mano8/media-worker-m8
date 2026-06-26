@@ -9,7 +9,7 @@ from media_sdk_m8 import ScanJobPayload
 from worker.scanner import ScanVerdict
 from worker.tasks import scan_object
 
-from tests.conftest import SERVICE_TOKEN, FakeScanner
+from tests.conftest import SERVICE_TOKEN, WORKER_CLIENT_ID, FakeScanner
 
 
 def _payload():
@@ -37,7 +37,10 @@ async def test_clean_object_reports_clean_and_keeps_bytes(ctx, storage, http):
     call = http.posts[0]
     assert call["url"].endswith(f"/v1/internal/objects/{payload.object_id}/scan-result")
     assert call["json"] == {"scan_status": "clean"}
-    assert call["headers"] == {"Authorization": f"Bearer {SERVICE_TOKEN}"}
+    assert call["headers"] == {
+        "Authorization": f"Bearer {SERVICE_TOKEN}",
+        "X-Worker-Client": WORKER_CLIENT_ID,
+    }
 
 
 @pytest.mark.anyio

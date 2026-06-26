@@ -9,7 +9,7 @@ from media_sdk_m8 import VariantJobPayload, VariantSpec
 from worker import tasks
 from worker.tasks import generate_variants
 
-from tests.conftest import SERVICE_TOKEN, make_variant_result
+from tests.conftest import SERVICE_TOKEN, WORKER_CLIENT_ID, make_variant_result
 
 
 def _spec(name, ext="webp", bucket="public-media"):
@@ -76,7 +76,10 @@ async def test_success_renders_stores_registers_and_completes(
     # Each variant registered with auth header + dimensions.
     assert len(http.posts) == 2
     reg = http.posts[0]
-    assert reg["headers"] == {"Authorization": f"Bearer {SERVICE_TOKEN}"}
+    assert reg["headers"] == {
+        "Authorization": f"Bearer {SERVICE_TOKEN}",
+        "X-Worker-Client": WORKER_CLIENT_ID,
+    }
     assert reg["url"].endswith(
         f"/v1/internal/objects/{payload.media_object_id}/variants"
     )
