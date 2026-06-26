@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- `generate_variants` now refuses a variant job whose source object is not stored
+  as an image (`image/*`) before any download or decode (security plan P0.1,
+  worker-side defense in depth). The worker stats the source via the SDK and, on a
+  non-image content type or a missing/stale object, fails the job terminally
+  without spending decode work — a storage-only restatement of media-service's
+  scan-readiness gate that adds no service-internal coupling.
+
 ### Changed
 
 - Pin **`media-sdk-m8>=0.4.0`** (from `>=0.1.0`) to stay aligned with the latest

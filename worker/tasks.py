@@ -30,6 +30,36 @@ JOB_STATUS_PROCESSING = "processing"
 JOB_STATUS_COMPLETED = "completed"
 JOB_STATUS_FAILED = "failed"
 
+# ── Scan-readiness defense (P0.1) ─────────────────────────────────────────────
+#: A processable variant source must be stored as an image. media-service only
+#: enqueues variant jobs for scanned, ready image objects; this prefix is the
+#: worker's storage-only restatement of that contract.
+IMAGE_CONTENT_TYPE_PREFIX = "image/"
+
+
+class UnprocessableSourceError(Exception):
+    """A variant job references a source the worker must not decode.
+
+    Raised by the pre-decode readiness guard when a (possibly stale or poisoned)
+    job points at an object state media-service no longer considers processable,
+    e.g. a non-image content type. Terminal — the job is failed, never retried.
+    """
+
+
+def _assert_source_processable(stat: Any) -> None:
+    """Refuse a stale/non-processable variant source before any decode.
+
+    Defense in depth for the service-side scan-readiness gate: we inspect only
+    storage metadata (never the object bytes), so refusing a stale job costs no
+    download or decode work. A missing source raises from ``stat_object`` upstream
+    and is handled the same terminal way.
+    """
+    content_type = getattr(stat, "content_type", None) or ""
+    if not content_type.lower().startswith(IMAGE_CONTENT_TYPE_PREFIX):
+        raise UnprocessableSourceError(
+            f"source object is not a processable image (content_type={content_type!r})"
+        )
+
 
 def _auth_headers(config: WorkerConfig) -> dict[str, str]:
     """Auth headers for internal media-service callbacks."""
@@ -130,12 +160,14 @@ async def scan_object(ctx: dict[str, Any], payload: ScanJobPayload) -> str:
 async def generate_variants(ctx: dict[str, Any], payload: VariantJobPayload) -> int:
     """Render every spec for one source object and register the results.
 
-    Marks the job PROCESSING, downloads the source, renders all specs in one
-    ``process_image_async`` call, matches each :class:`VariantResult` to its spec
-    by ``name``, writes the bytes, and registers each variant. On success the job
-    is marked COMPLETED with the created count. Any failure marks it FAILED with
-    the error message and is **terminal** — a partially rendered job is not
-    retried (re-running would duplicate already-written variants).
+    Marks the job PROCESSING, verifies the source is still a processable image
+    (a pre-decode, storage-only defense against stale/poisoned jobs), downloads
+    the source, renders all specs in one ``process_image_async`` call, matches
+    each :class:`VariantResult` to its spec by ``name``, writes the bytes, and
+    registers each variant. On success the job is marked COMPLETED with the
+    created count. Any failure marks it FAILED with the error message and is
+    **terminal** — a partially rendered job is not retried (re-running would
+    duplicate already-written variants).
     """
 
     storage: ObjectStorage = ctx["storage"]
@@ -143,6 +175,12 @@ async def generate_variants(ctx: dict[str, Any], payload: VariantJobPayload) -> 
     await _update_job(ctx, payload.job_id, JOB_STATUS_PROCESSING)
     created = 0
     try:
+        stat = await asyncio.to_thread(
+            storage.stat_object,
+            bucket=payload.source_bucket,
+            object_key=payload.source_object_key,
+        )
+        _assert_source_processable(stat)
         source = await asyncio.to_thread(
             storage.get_object,
             bucket=payload.source_bucket,

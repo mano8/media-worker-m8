@@ -105,6 +105,9 @@ def storage_fixture():
     """A MagicMock standing in for the SDK ObjectStorage client."""
     storage = MagicMock(spec=ObjectStorage)
     storage.get_object.return_value = b"source-bytes"
+    storage.stat_object.return_value = SimpleNamespace(
+        content_type="image/png", size=12
+    )
     return storage
 
 

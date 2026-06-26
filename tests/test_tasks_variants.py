@@ -1,6 +1,7 @@
 """Tests for worker.tasks.generate_variants — render, store, register, report."""
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -122,4 +123,46 @@ async def test_missing_variant_name_marks_job_failed(ctx, storage, http, monkeyp
     created = await generate_variants(ctx, payload)
 
     assert created == 0
+    assert http.patches[-1]["json"]["status"] == "failed"
+
+
+@pytest.mark.anyio
+async def test_non_image_source_fails_before_decode(ctx, storage, http, monkeypatch):
+    """A stale job pointing at a non-image object fails without decoding bytes."""
+    storage.stat_object.return_value = SimpleNamespace(
+        content_type="application/pdf", size=12
+    )
+    payload = _payload([_spec("thumb_webp")])
+
+    async def must_not_run(source, options):  # pragma: no cover - must not be called
+        raise AssertionError("process_image_async must not run for a bad source")
+
+    monkeypatch.setattr(tasks, "process_image_async", must_not_run)
+
+    created = await generate_variants(ctx, payload)
+
+    assert created == 0
+    storage.get_object.assert_not_called()  # never downloaded
+    storage.put_object.assert_not_called()
+    assert http.posts == []
+    failed = http.patches[-1]["json"]
+    assert failed["status"] == "failed"
+    assert "not a processable image" in failed["error"]
+
+
+@pytest.mark.anyio
+async def test_missing_source_object_fails_terminally(ctx, storage, http, monkeypatch):
+    """A deleted/stale source raises from stat and fails without decoding."""
+    storage.stat_object.side_effect = FileNotFoundError("source gone")
+    payload = _payload([_spec("thumb_webp")])
+
+    async def must_not_run(source, options):  # pragma: no cover - must not be called
+        raise AssertionError("process_image_async must not run for a missing source")
+
+    monkeypatch.setattr(tasks, "process_image_async", must_not_run)
+
+    created = await generate_variants(ctx, payload)
+
+    assert created == 0
+    storage.get_object.assert_not_called()
     assert http.patches[-1]["json"]["status"] == "failed"

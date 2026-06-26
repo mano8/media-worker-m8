@@ -7,7 +7,7 @@ media-owned Redis and runs two tasks:
 | Task | Trigger | What it does |
 | --- | --- | --- |
 | `scan_object` | object upload completes | Antivirus-scan the bytes (ClamAV). Clean → report `CLEAN`; infected → purge the object and report `QUARANTINED`. |
-| `generate_variants` | a variant job is requested | Render image variants with `imgtools_m8`, write them to object storage, and register each one. |
+| `generate_variants` | a variant job is requested | Verify the source is still a processable image, render image variants with `imgtools_m8`, write them to object storage, and register each one. |
 
 The worker owns **no database**. It reads/writes object bytes through the shared
 [`media-sdk-m8`](../media-sdk-m8) storage client and reports results to
@@ -42,6 +42,10 @@ import imgtools.
 * **Worker needs no preset/key knowledge.** media-service builds every
   `VariantSpec` (imgtools-shaped `output_options` + `target_bucket`/`target_key`)
   inside the `VariantJobPayload`; the worker just renders, stores, and registers.
+* **Pre-decode scan-readiness defense.** Before downloading or decoding a source,
+  `generate_variants` stats the object and refuses anything that is not stored as
+  an image (`image/*`) — defense in depth for media-service's scan-readiness gate
+  so a stale or poisoned job is failed terminally without spending decode work.
 
 ---
 
