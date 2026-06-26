@@ -46,6 +46,12 @@ import imgtools.
   `generate_variants` stats the object and refuses anything that is not stored as
   an image (`image/*`) — defense in depth for media-service's scan-readiness gate
   so a stale or poisoned job is failed terminally without spending decode work.
+* **Local cost ceilings.** The worker also bounds its own workload as defense in
+  depth: it caps outputs per job, source object size (from metadata, pre-download),
+  total written output bytes (before any write), and the render wall-clock time.
+  A job over any ceiling fails terminally even if a malformed or stale job bypasses
+  media-service — which remains the request-policy owner; these are safety ceilings,
+  not user-facing policy.
 
 ---
 
@@ -74,6 +80,10 @@ Copy `worker/.env.example` to `worker/.env`. Every secret stays the literal
 | `MINIO_HOST` / `_PORT` / `_USE_SSL` / `_REGION` / `_ACCESS_KEY` / `_SECRET_KEY` | `minio` / `9000` / `false` / `eu-west-1` / – / – | Object storage. |
 | `CLAMAV_HOST` / `_PORT` / `_TIMEOUT_SECONDS` | `clamav` / `3310` / `120` | clamd daemon address. |
 | `WORKER_MAX_TRIES` / `_JOB_TIMEOUT_SECONDS` / `_KEEP_RESULT_SECONDS` | `5` / `300` / `3600` | ARQ tuning. |
+| `WORKER_MAX_SOURCE_BYTES` | `67108864` (64 MiB) | Max source object size accepted from storage metadata before download. |
+| `WORKER_MAX_OUTPUTS_PER_JOB` | `32` | Max variant outputs rendered per job (fan-out bound). |
+| `WORKER_MAX_OUTPUT_BYTES` | `134217728` (128 MiB) | Max total written output bytes per job (storage-write amplification bound). |
+| `WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS` | `120` | Wall-clock ceiling for one render call; must be ≤ `WORKER_JOB_TIMEOUT_SECONDS`. |
 
 ---
 

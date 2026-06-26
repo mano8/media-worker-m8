@@ -1,5 +1,6 @@
 """Tests for worker.tasks.generate_variants — render, store, register, report."""
 
+import asyncio
 import uuid
 from types import SimpleNamespace
 
@@ -8,6 +9,7 @@ import pytest
 from media_sdk_m8 import VariantJobPayload, VariantSpec
 
 from worker import tasks
+from worker.config import WorkerConfig
 from worker.tasks import generate_variants
 
 from tests.conftest import SERVICE_TOKEN, WORKER_CLIENT_ID, make_variant_result
@@ -166,3 +168,124 @@ async def test_missing_source_object_fails_terminally(ctx, storage, http, monkey
     assert created == 0
     storage.get_object.assert_not_called()
     assert http.patches[-1]["json"]["status"] == "failed"
+
+
+# ── P0.3 worker-side cost ceilings (defense in depth) ─────────────────────────
+
+
+def _ctx_with(ctx, **overrides):
+    """Return ``ctx`` with a config rebuilt from the test env plus overrides."""
+    ctx["config"] = WorkerConfig(**overrides)
+    return ctx
+
+
+@pytest.mark.anyio
+async def test_too_many_outputs_fails_before_any_storage_work(
+    ctx, storage, http, monkeypatch
+):
+    """Output fan-out over the ceiling is refused before stat or download."""
+    ctx = _ctx_with(ctx, WORKER_MAX_OUTPUTS_PER_JOB=1)
+    payload = _payload([_spec("thumb_webp"), _spec("small_jpeg", ext="jpeg")])
+
+    async def must_not_run(source, options):  # pragma: no cover - must not be called
+        raise AssertionError("process_image_async must not run for an over-fanned job")
+
+    monkeypatch.setattr(tasks, "process_image_async", must_not_run)
+
+    created = await generate_variants(ctx, payload)
+
+    assert created == 0
+    storage.stat_object.assert_not_called()  # refused before any storage work
+    storage.get_object.assert_not_called()
+    failed = http.patches[-1]["json"]
+    assert failed["status"] == "failed"
+    assert "exceeding the worker ceiling" in failed["error"]
+
+
+@pytest.mark.anyio
+async def test_oversized_source_fails_before_download(ctx, storage, http, monkeypatch):
+    """A source larger than the ceiling is refused from metadata, pre-download."""
+    ctx = _ctx_with(ctx, WORKER_MAX_SOURCE_BYTES=10)
+    storage.stat_object.return_value = SimpleNamespace(
+        content_type="image/png", size=11
+    )
+    payload = _payload([_spec("thumb_webp")])
+
+    async def must_not_run(source, options):  # pragma: no cover - must not be called
+        raise AssertionError("process_image_async must not run for an oversized source")
+
+    monkeypatch.setattr(tasks, "process_image_async", must_not_run)
+
+    created = await generate_variants(ctx, payload)
+
+    assert created == 0
+    storage.get_object.assert_not_called()  # never downloaded
+    failed = http.patches[-1]["json"]
+    assert failed["status"] == "failed"
+    assert "exceeding the worker ceiling" in failed["error"]
+
+
+@pytest.mark.anyio
+async def test_unknown_source_size_fails_closed(ctx, storage, http, monkeypatch):
+    """A source with unknown size fails closed without downloading bytes."""
+    storage.stat_object.return_value = SimpleNamespace(content_type="image/png")
+    payload = _payload([_spec("thumb_webp")])
+
+    async def must_not_run(source, options):  # pragma: no cover - must not be called
+        raise AssertionError("process_image_async must not run for an unsized source")
+
+    monkeypatch.setattr(tasks, "process_image_async", must_not_run)
+
+    created = await generate_variants(ctx, payload)
+
+    assert created == 0
+    storage.get_object.assert_not_called()
+    failed = http.patches[-1]["json"]
+    assert failed["status"] == "failed"
+    assert "size is unknown" in failed["error"]
+
+
+@pytest.mark.anyio
+async def test_total_output_bytes_over_budget_fails_before_write(
+    ctx, storage, http, monkeypatch
+):
+    """Total rendered output over the byte budget is refused before any write."""
+    ctx = _ctx_with(ctx, WORKER_MAX_OUTPUT_BYTES=5)
+    payload = _payload([_spec("thumb_webp")])
+
+    async def fake_process(source, options):
+        return [make_variant_result(name="thumb_webp", size_bytes=6)]
+
+    monkeypatch.setattr(tasks, "process_image_async", fake_process)
+
+    created = await generate_variants(ctx, payload)
+
+    assert created == 0
+    storage.put_object.assert_not_called()  # no write amplification
+    assert http.posts == []  # nothing registered
+    failed = http.patches[-1]["json"]
+    assert failed["status"] == "failed"
+    assert "exceeding the worker ceiling" in failed["error"]
+
+
+@pytest.mark.anyio
+async def test_render_over_time_budget_fails_terminally(
+    ctx, storage, http, monkeypatch
+):
+    """A render that overruns the time budget is failed cleanly, no write."""
+    ctx = _ctx_with(ctx, WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS=0.01)
+    payload = _payload([_spec("thumb_webp")])
+
+    async def slow_process(source, options):
+        await asyncio.sleep(0.2)
+        return [make_variant_result(name="thumb_webp")]  # pragma: no cover
+
+    monkeypatch.setattr(tasks, "process_image_async", slow_process)
+
+    created = await generate_variants(ctx, payload)
+
+    assert created == 0
+    storage.put_object.assert_not_called()
+    failed = http.patches[-1]["json"]
+    assert failed["status"] == "failed"
+    assert "time budget" in failed["error"]

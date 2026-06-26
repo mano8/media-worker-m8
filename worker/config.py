@@ -71,6 +71,32 @@ class WorkerConfig(BaseSettings):
     WORKER_JOB_TIMEOUT_SECONDS: int = Field(default=300, ge=1)
     WORKER_KEEP_RESULT_SECONDS: int = Field(default=3600, ge=0)
 
+    # ── Variant cost ceilings (P0.3 defense in depth) ─────────────────────────
+    # Local safety ceilings for an independent runtime: even if a malformed or
+    # stale job bypasses media-service's request-policy bounds, the worker
+    # refuses unsafe workloads at its own trust boundary. media-service remains
+    # the request-policy owner; these are not user-facing policy.
+    #: Max source object size (bytes) accepted from storage metadata before any
+    #: download. Refused pre-download so an oversized source costs no transfer.
+    WORKER_MAX_SOURCE_BYTES: int = Field(default=64 * 1024 * 1024, ge=1)
+    #: Max number of variant specs rendered per job (output fan-out bound).
+    WORKER_MAX_OUTPUTS_PER_JOB: int = Field(default=32, ge=1)
+    #: Max total written output bytes per job (storage-write amplification bound).
+    WORKER_MAX_OUTPUT_BYTES: int = Field(default=128 * 1024 * 1024, ge=1)
+    #: Wall-clock ceiling (seconds) for the single image-processing render call.
+    #: Must stay <= WORKER_JOB_TIMEOUT_SECONDS so the worker fails the job
+    #: terminally (clean FAILED status) before ARQ kills and retries it.
+    WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS: float = Field(default=120.0, gt=0)
+
+    @model_validator(mode="after")
+    def _assert_process_timeout_within_job_timeout(self) -> "WorkerConfig":
+        if self.WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS > self.WORKER_JOB_TIMEOUT_SECONDS:
+            raise ValueError(
+                "WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS must not exceed "
+                "WORKER_JOB_TIMEOUT_SECONDS"
+            )
+        return self
+
     @model_validator(mode="after")
     def _assert_token_not_reused(self) -> "WorkerConfig":
         token = self.MEDIA_INTERNAL_SERVICE_TOKEN.get_secret_value()

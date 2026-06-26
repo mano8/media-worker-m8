@@ -46,6 +46,17 @@ class UnprocessableSourceError(Exception):
     """
 
 
+class VariantCostLimitError(Exception):
+    """A variant job exceeds a worker safety ceiling.
+
+    Raised by the cost-bound guards (P0.3 defense in depth) when a (possibly
+    malformed or stale) job would multiply CPU, memory, queue time, or storage
+    writes past this worker's local ceilings — too many outputs, an oversized
+    source, an oversized total output, or a render that overran its time budget.
+    Terminal — the job is failed, never retried.
+    """
+
+
 def _assert_source_processable(stat: Any) -> None:
     """Refuse a stale/non-processable variant source before any decode.
 
@@ -58,6 +69,48 @@ def _assert_source_processable(stat: Any) -> None:
     if not content_type.lower().startswith(IMAGE_CONTENT_TYPE_PREFIX):
         raise UnprocessableSourceError(
             f"source object is not a processable image (content_type={content_type!r})"
+        )
+
+
+def _assert_output_count_within_limit(
+    payload: VariantJobPayload, config: WorkerConfig
+) -> None:
+    """Bound output fan-out before any storage work (P0.3).
+
+    Checked first, before stat/download, so an over-fanned job is refused at the
+    cheapest possible point.
+    """
+    count = len(payload.specs)
+    if count > config.WORKER_MAX_OUTPUTS_PER_JOB:
+        raise VariantCostLimitError(
+            f"variant job requests {count} outputs, exceeding the worker ceiling "
+            f"of {config.WORKER_MAX_OUTPUTS_PER_JOB}"
+        )
+
+
+def _assert_source_size_within_limit(stat: Any, config: WorkerConfig) -> None:
+    """Refuse an oversized (or unsized) source before download (P0.3).
+
+    Inspects only storage metadata, so an oversized source costs no transfer. A
+    missing/unknown size fails closed — the worker will not download bytes it
+    cannot bound.
+    """
+    size = getattr(stat, "size", None)
+    if size is None:
+        raise VariantCostLimitError("source object size is unknown; refusing to fetch")
+    if size > config.WORKER_MAX_SOURCE_BYTES:
+        raise VariantCostLimitError(
+            f"source object is {size} bytes, exceeding the worker ceiling of "
+            f"{config.WORKER_MAX_SOURCE_BYTES}"
+        )
+
+
+def _assert_output_bytes_within_budget(total_bytes: int, config: WorkerConfig) -> None:
+    """Bound total written output bytes before any variant is stored (P0.3)."""
+    if total_bytes > config.WORKER_MAX_OUTPUT_BYTES:
+        raise VariantCostLimitError(
+            f"variant outputs total {total_bytes} bytes, exceeding the worker "
+            f"ceiling of {config.WORKER_MAX_OUTPUT_BYTES}"
         )
 
 
@@ -160,36 +213,54 @@ async def scan_object(ctx: dict[str, Any], payload: ScanJobPayload) -> str:
 async def generate_variants(ctx: dict[str, Any], payload: VariantJobPayload) -> int:
     """Render every spec for one source object and register the results.
 
-    Marks the job PROCESSING, verifies the source is still a processable image
-    (a pre-decode, storage-only defense against stale/poisoned jobs), downloads
-    the source, renders all specs in one ``process_image_async`` call, matches
-    each :class:`VariantResult` to its spec by ``name``, writes the bytes, and
-    registers each variant. On success the job is marked COMPLETED with the
-    created count. Any failure marks it FAILED with the error message and is
-    **terminal** — a partially rendered job is not retried (re-running would
-    duplicate already-written variants).
+    Marks the job PROCESSING, bounds the output fan-out, verifies the source is
+    still a processable image and within the worker's size ceiling (pre-decode,
+    storage-only defenses against stale/poisoned or oversized jobs), downloads
+    the source, renders all specs in one ``process_image_async`` call under a
+    wall-clock budget, matches each :class:`VariantResult` to its spec by
+    ``name``, checks the total output budget, then writes the bytes and registers
+    each variant. On success the job is marked COMPLETED with the created count.
+    Any failure marks it FAILED with the error message and is **terminal** — a
+    partially rendered job is not retried (re-running would duplicate
+    already-written variants). The cost ceilings (P0.3) are local worker
+    defense in depth; media-service remains the request-policy owner.
     """
 
     storage: ObjectStorage = ctx["storage"]
+    config: WorkerConfig = ctx["config"]
 
     await _update_job(ctx, payload.job_id, JOB_STATUS_PROCESSING)
     created = 0
     try:
+        _assert_output_count_within_limit(payload, config)
         stat = await asyncio.to_thread(
             storage.stat_object,
             bucket=payload.source_bucket,
             object_key=payload.source_object_key,
         )
         _assert_source_processable(stat)
+        _assert_source_size_within_limit(stat, config)
         source = await asyncio.to_thread(
             storage.get_object,
             bucket=payload.source_bucket,
             object_key=payload.source_object_key,
         )
-        results = await process_image_async(
-            source, [spec.output_options for spec in payload.specs]
-        )
+        try:
+            async with asyncio.timeout(config.WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS):
+                results = await process_image_async(
+                    source, [spec.output_options for spec in payload.specs]
+                )
+        except TimeoutError as exc:
+            raise VariantCostLimitError(
+                "image processing exceeded the worker time budget of "
+                f"{config.WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS}s"
+            ) from exc
         by_name = {result.name: result for result in results}
+
+        total_output_bytes = sum(
+            by_name[spec.variant_name].size_bytes for spec in payload.specs
+        )
+        _assert_output_bytes_within_budget(total_output_bytes, config)
 
         for spec in payload.specs:
             result = by_name[spec.variant_name]

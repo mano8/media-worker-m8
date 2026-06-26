@@ -14,6 +14,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   non-image content type or a missing/stale object, fails the job terminally
   without spending decode work — a storage-only restatement of media-service's
   scan-readiness gate that adds no service-internal coupling.
+- `generate_variants` now enforces local variant cost ceilings as defense in depth
+  (security plan P0.3, worker-side). Even if a malformed or stale job bypasses
+  media-service's request bounds, the worker refuses unsafe workloads at its own
+  trust boundary and fails the job terminally: output fan-out per job
+  (`WORKER_MAX_OUTPUTS_PER_JOB`, checked before any storage work), source object
+  size (`WORKER_MAX_SOURCE_BYTES`, from metadata before download — an unknown size
+  fails closed), total written output bytes (`WORKER_MAX_OUTPUT_BYTES`, before any
+  variant is written), and a render wall-clock budget
+  (`WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS`, validated `<= WORKER_JOB_TIMEOUT_SECONDS`
+  so the job fails cleanly before ARQ kills and retries it). media-service remains
+  the request-policy owner; these are runtime-local safety ceilings. Source-byte
+  streaming and decoded-pixel limits remain for plan item P1.2.
 
 ### Changed
 

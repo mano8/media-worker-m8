@@ -81,6 +81,22 @@ def test_credential_isolation_token_not_minio_key():
         )
 
 
+def test_image_process_timeout_must_not_exceed_job_timeout():
+    with pytest.raises(ValidationError, match="WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS"):
+        WorkerConfig(
+            WORKER_JOB_TIMEOUT_SECONDS=30,
+            WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS=31,
+        )
+
+
+def test_variant_cost_ceiling_defaults():
+    cfg = WorkerConfig()
+    assert cfg.WORKER_MAX_SOURCE_BYTES == 64 * 1024 * 1024
+    assert cfg.WORKER_MAX_OUTPUTS_PER_JOB == 32
+    assert cfg.WORKER_MAX_OUTPUT_BYTES == 128 * 1024 * 1024
+    assert cfg.WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS == 120.0
+
+
 def test_credential_isolation_distinct_credentials_accepted():
     cfg = WorkerConfig(
         MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("ServiceToken!1secure"),
