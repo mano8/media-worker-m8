@@ -102,6 +102,13 @@ def test_variant_cost_ceiling_defaults():
     assert cfg.WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS == 120.0
 
 
+def test_memory_guard_and_concurrency_defaults():
+    cfg = WorkerConfig()
+    assert cfg.WORKER_MAX_SCAN_BYTES == 256 * 1024 * 1024
+    assert cfg.WORKER_MAX_DECODED_PIXELS == 50_000_000
+    assert cfg.WORKER_MAX_CONCURRENT_JOBS == 4
+
+
 def test_credential_isolation_distinct_credentials_accepted():
     cfg = WorkerConfig(
         MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("ServiceToken!1secure"),

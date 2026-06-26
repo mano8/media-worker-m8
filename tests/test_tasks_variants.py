@@ -12,7 +12,12 @@ from worker import tasks
 from worker.config import WorkerConfig
 from worker.tasks import generate_variants
 
-from tests.conftest import SERVICE_TOKEN, WORKER_CLIENT_ID, make_variant_result
+from tests.conftest import (
+    PNG_SOURCE_BYTES,
+    SERVICE_TOKEN,
+    WORKER_CLIENT_ID,
+    make_variant_result,
+)
 
 
 def _spec(name, ext="webp", bucket="public-media"):
@@ -48,7 +53,7 @@ async def test_success_renders_stores_registers_and_completes(
     ]
 
     async def fake_process(source, options):
-        assert source == b"source-bytes"
+        assert source == PNG_SOURCE_BYTES
         assert options == [s.output_options for s in specs]
         return results
 
@@ -263,6 +268,34 @@ async def test_total_output_bytes_over_budget_fails_before_write(
     assert created == 0
     storage.put_object.assert_not_called()  # no write amplification
     assert http.posts == []  # nothing registered
+    failed = http.patches[-1]["json"]
+    assert failed["status"] == "failed"
+    assert "exceeding the worker ceiling" in failed["error"]
+
+
+@pytest.mark.anyio
+async def test_decompression_bomb_source_fails_before_decode(
+    ctx, storage, http, monkeypatch
+):
+    """An image whose decoded pixels exceed the ceiling is refused pre-decode.
+
+    The 10×10 PNG source (100 px) trips a ``WORKER_MAX_DECODED_PIXELS=1`` ceiling,
+    so the render never runs even though the source was downloaded.
+    """
+    ctx = _ctx_with(ctx, WORKER_MAX_DECODED_PIXELS=1)
+    payload = _payload([_spec("thumb_webp")])
+
+    async def must_not_run(source, options):  # pragma: no cover - must not be called
+        raise AssertionError("process_image_async must not run for a decode bomb")
+
+    monkeypatch.setattr(tasks, "process_image_async", must_not_run)
+
+    created = await generate_variants(ctx, payload)
+
+    assert created == 0
+    storage.get_object.assert_called_once()  # downloaded (size-capped) then refused
+    storage.put_object.assert_not_called()
+    assert http.posts == []
     failed = http.patches[-1]["json"]
     assert failed["status"] == "failed"
     assert "exceeding the worker ceiling" in failed["error"]

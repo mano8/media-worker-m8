@@ -39,6 +39,8 @@ def test_worker_settings_registers_both_tasks():
     assert WorkerSettings.max_tries >= 1
     assert WorkerSettings.job_timeout >= 1
     assert WorkerSettings.keep_result >= 0
+    # Concurrency is bounded so peak memory stays within the container limit.
+    assert WorkerSettings.max_jobs >= 1
 
 
 @pytest.mark.anyio

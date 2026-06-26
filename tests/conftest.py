@@ -6,9 +6,12 @@ replaced with fakes. Env vars are set before importing the worker package so
 ``WorkerConfig`` resolves to deterministic test values.
 """
 
+import io
 import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+from PIL import Image
 
 # ── 1. Set env BEFORE importing the worker package ───────────────────────────
 _TEST_ENV = {
@@ -27,6 +30,17 @@ for _k, _v in _TEST_ENV.items():
 
 SERVICE_TOKEN = _TEST_ENV["MEDIA_INTERNAL_SERVICE_TOKEN"]
 WORKER_CLIENT_ID = "media-worker"  # matches WorkerConfig default
+
+
+def make_png_bytes(width: int = 10, height: int = 10) -> bytes:
+    """Encode a real (tiny) PNG so the pre-decode header probe reads true dims."""
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), "white").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+#: A real 10×10 PNG variant source — the decode-pixel guard reads 100 px from it.
+PNG_SOURCE_BYTES = make_png_bytes()
 
 import pytest  # noqa: E402
 
@@ -52,14 +66,18 @@ def config_fixture():
 
 # ── Fakes ─────────────────────────────────────────────────────────────────--
 class FakeScanner:
-    """In-memory scanner returning a preset verdict (and recording calls)."""
+    """In-memory scanner returning a preset verdict (and recording calls).
+
+    Consumes the chunk iterator exactly like the real ClamAV scanner — joining
+    the streamed chunks — so tests can assert on the streamed payload.
+    """
 
     def __init__(self, verdict: ScanVerdict) -> None:
         self.verdict = verdict
         self.scanned: list[bytes] = []
 
-    async def scan(self, data: bytes) -> ScanVerdict:
-        self.scanned.append(data)
+    async def scan(self, chunks) -> ScanVerdict:
+        self.scanned.append(b"".join(chunks))
         return self.verdict
 
 
@@ -104,7 +122,10 @@ def make_variant_result(
 def storage_fixture():
     """A MagicMock standing in for the SDK ObjectStorage client."""
     storage = MagicMock(spec=ObjectStorage)
-    storage.get_object.return_value = b"source-bytes"
+    # A real PNG so generate_variants' pre-decode pixel guard sees true dims.
+    storage.get_object.return_value = PNG_SOURCE_BYTES
+    # Streamed scan source (a re-iterable list of chunks the fake scanner joins).
+    storage.stream_object.return_value = [b"source", b"-bytes"]
     storage.stat_object.return_value = SimpleNamespace(
         content_type="image/png", size=12
     )

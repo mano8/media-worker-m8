@@ -18,6 +18,7 @@ from media_sdk_m8 import ScanJobPayload, VariantJobPayload, VariantSpec
 from media_sdk_m8 import ObjectStorage
 
 from worker.config import WorkerConfig
+from worker.image_guard import assert_decoded_pixels_within_limit
 from worker.media_types import content_type_for_format
 from worker.scanner import Scanner, ScanVerdict
 
@@ -86,6 +87,20 @@ def _assert_output_count_within_limit(
             f"variant job requests {count} outputs, exceeding the worker ceiling "
             f"of {config.WORKER_MAX_OUTPUTS_PER_JOB}"
         )
+
+
+def _scan_source_too_large(stat: Any, config: WorkerConfig) -> bool:
+    """True when a scan source is too large to stream-scan, or of unknown size.
+
+    Read from storage metadata before any stream (P1.2). Scanning is streamed
+    chunk-by-chunk so worker memory stays bounded regardless of object size; this
+    ceiling only caps abuse and keeps the stream within clamd's ``StreamMaxLength``.
+    An unknown size fails closed — the worker will not stream bytes it cannot
+    bound. A ``True`` result is handled by quarantining the object, never marking
+    it clean.
+    """
+    size = getattr(stat, "size", None)
+    return size is None or size > config.WORKER_MAX_SCAN_BYTES
 
 
 def _assert_source_size_within_limit(stat: Any, config: WorkerConfig) -> None:
@@ -180,31 +195,46 @@ async def _update_job(
     resp.raise_for_status()
 
 
+async def _quarantine(ctx: dict[str, Any], payload: ScanJobPayload) -> str:
+    """Purge an unsafe object and report it ``QUARANTINED``."""
+    storage: ObjectStorage = ctx["storage"]
+    await asyncio.to_thread(
+        storage.remove_object,
+        bucket=payload.bucket,
+        object_key=payload.object_key,
+    )
+    await _post_scan_result(ctx, payload.object_id, SCAN_STATUS_QUARANTINED)
+    return SCAN_STATUS_QUARANTINED
+
+
 async def scan_object(ctx: dict[str, Any], payload: ScanJobPayload) -> str:
     """Antivirus-scan an uploaded object and report the verdict.
 
-    Clean objects are reported ``CLEAN`` (media-service flips them to READY).
-    Infected objects are purged from storage first, then reported
-    ``QUARANTINED``. Transient errors (storage/scanner/HTTP) propagate so ARQ
-    retries the job.
+    The source is **streamed** to the scanner chunk-by-chunk (it is never read
+    whole into worker memory): the object is first sized from storage metadata,
+    refused as unsafe (fail-closed, quarantined — never clean) when it exceeds
+    ``WORKER_MAX_SCAN_BYTES`` or has an unknown size, then streamed via the SDK
+    ``stream_object`` primitive (security plan P1.2). Clean objects are reported
+    ``CLEAN`` (media-service flips them to READY). Infected (or unscannable)
+    objects are purged from storage first, then reported ``QUARANTINED``.
+    Transient errors (storage/scanner/HTTP) propagate so ARQ retries the job.
     """
 
     storage: ObjectStorage = ctx["storage"]
     scanner: Scanner = ctx["scanner"]
+    config: WorkerConfig = ctx["config"]
 
-    data = await asyncio.to_thread(
-        storage.get_object, bucket=payload.bucket, object_key=payload.object_key
+    stat = await asyncio.to_thread(
+        storage.stat_object, bucket=payload.bucket, object_key=payload.object_key
     )
-    verdict = await scanner.scan(data)
+    if _scan_source_too_large(stat, config):
+        return await _quarantine(ctx, payload)
+
+    chunks = storage.stream_object(bucket=payload.bucket, object_key=payload.object_key)
+    verdict = await scanner.scan(chunks)
 
     if verdict is ScanVerdict.INFECTED:
-        await asyncio.to_thread(
-            storage.remove_object,
-            bucket=payload.bucket,
-            object_key=payload.object_key,
-        )
-        await _post_scan_result(ctx, payload.object_id, SCAN_STATUS_QUARANTINED)
-        return SCAN_STATUS_QUARANTINED
+        return await _quarantine(ctx, payload)
 
     await _post_scan_result(ctx, payload.object_id, SCAN_STATUS_CLEAN)
     return SCAN_STATUS_CLEAN
@@ -216,7 +246,9 @@ async def generate_variants(ctx: dict[str, Any], payload: VariantJobPayload) -> 
     Marks the job PROCESSING, bounds the output fan-out, verifies the source is
     still a processable image and within the worker's size ceiling (pre-decode,
     storage-only defenses against stale/poisoned or oversized jobs), downloads
-    the source, renders all specs in one ``process_image_async`` call under a
+    the source, refuses a decompression bomb via a header-only pixel preflight
+    before the full decode (``WORKER_MAX_DECODED_PIXELS``, security plan P1.2),
+    renders all specs in one ``process_image_async`` call under a
     wall-clock budget, matches each :class:`VariantResult` to its spec by
     ``name``, checks the total output budget, then writes the bytes and registers
     each variant. On success the job is marked COMPLETED with the created count.
@@ -245,6 +277,7 @@ async def generate_variants(ctx: dict[str, Any], payload: VariantJobPayload) -> 
             bucket=payload.source_bucket,
             object_key=payload.source_object_key,
         )
+        assert_decoded_pixels_within_limit(source, config)
         try:
             async with asyncio.timeout(config.WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS):
                 results = await process_image_async(

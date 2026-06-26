@@ -8,6 +8,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- The AV scan path now **streams** the source object to ClamAV chunk-by-chunk
+  instead of buffering the whole object in worker memory (security plan P1.2).
+  `scan_object` sizes the object from storage metadata first — failing closed
+  (quarantine, never `CLEAN`) when it exceeds `WORKER_MAX_SCAN_BYTES` or has an
+  unknown size — then feeds the SDK `stream_object` iterator straight to the
+  clamd `INSTREAM` socket via a small `_ChunkReader` file-like adapter, so worker
+  memory stays bounded regardless of object size.
+- `generate_variants` now refuses **decompression-bomb** images before the full
+  decode (security plan P1.2): a header-only pixel preflight (`worker/image_guard.py`,
+  Pillow `Image.open(...).size` — no raster is decoded) fails the job terminally
+  when the source's `width × height` exceeds `WORKER_MAX_DECODED_PIXELS` (default
+  50 MP). Pillow is used for the header read only; all rendering stays delegated
+  to `imgtools_m8`.
+- Worker concurrency is now bounded via `WORKER_MAX_CONCURRENT_JOBS` (ARQ
+  `max_jobs`, default 4) so peak memory ≈ that count × the per-job source/decoded
+  ceilings; documented alongside a container memory-limit recommendation.
 - `WorkerConfig` now **fails closed** for unsafe runtime credentials (security
   plan P1.1). New `ENVIRONMENT` (`local`/`development`/`staging`/`production`)
   and `STRICT_PRODUCTION_MODE` settings mirror the auth/media services; under the
@@ -34,7 +50,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS`, validated `<= WORKER_JOB_TIMEOUT_SECONDS`
   so the job fails cleanly before ARQ kills and retries it). media-service remains
   the request-policy owner; these are runtime-local safety ceilings. Source-byte
-  streaming and decoded-pixel limits remain for plan item P1.2.
+  streaming and decoded-pixel limits are addressed in plan item P1.2 (above).
 
 ### Changed
 

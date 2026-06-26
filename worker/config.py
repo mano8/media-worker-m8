@@ -84,6 +84,11 @@ class WorkerConfig(BaseSettings):
     WORKER_MAX_TRIES: int = Field(default=5, ge=1)
     WORKER_JOB_TIMEOUT_SECONDS: int = Field(default=300, ge=1)
     WORKER_KEEP_RESULT_SECONDS: int = Field(default=3600, ge=0)
+    #: Max jobs this worker process runs concurrently (ARQ ``max_jobs``). Bounds
+    #: peak worker memory together with the per-job source/decoded ceilings:
+    #: roughly ``WORKER_MAX_CONCURRENT_JOBS × (decoded image + output budget)``.
+    #: Pair with a container memory limit sized for that ceiling.
+    WORKER_MAX_CONCURRENT_JOBS: int = Field(default=4, ge=1)
 
     # ── Variant cost ceilings (P0.3 defense in depth) ─────────────────────────
     # Local safety ceilings for an independent runtime: even if a malformed or
@@ -101,6 +106,23 @@ class WorkerConfig(BaseSettings):
     #: Must stay <= WORKER_JOB_TIMEOUT_SECONDS so the worker fails the job
     #: terminally (clean FAILED status) before ARQ kills and retries it.
     WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS: float = Field(default=120.0, gt=0)
+
+    # ── Memory guards (P1.2 — streaming scan + decode bomb defense) ────────────
+    #: Max source object size (bytes) accepted on the **scan** path, read from
+    #: storage metadata before any stream. Scanning is streamed chunk-by-chunk so
+    #: worker memory stays bounded regardless of object size; this ceiling caps
+    #: abuse and must stay <= the clamd ``StreamMaxLength``. An object over the
+    #: ceiling (or of unknown size) is failed closed — quarantined, never marked
+    #: clean. Larger than the variant ceiling because scanning also covers
+    #: non-image uploads, which need no in-memory decode.
+    WORKER_MAX_SCAN_BYTES: int = Field(default=256 * 1024 * 1024, ge=1)
+    #: Max decoded pixel count (width × height) accepted for a variant source,
+    #: read from the image header before the full decode. Defends against
+    #: decompression-bomb images whose encoded bytes are small but whose decoded
+    #: raster would exhaust memory. 50 MP ≈ 200 MB at RGBA; pair with the
+    #: concurrency bound and a container memory limit. Stays under Pillow's own
+    #: ``MAX_IMAGE_PIXELS`` (~89 MP) so this explicit gate fires first.
+    WORKER_MAX_DECODED_PIXELS: int = Field(default=50_000_000, ge=1)
 
     @model_validator(mode="after")
     def _assert_process_timeout_within_job_timeout(self) -> "WorkerConfig":

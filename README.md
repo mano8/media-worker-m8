@@ -6,7 +6,7 @@ media-owned Redis and runs two tasks:
 
 | Task | Trigger | What it does |
 | --- | --- | --- |
-| `scan_object` | object upload completes | Antivirus-scan the bytes (ClamAV). Clean → report `CLEAN`; infected → purge the object and report `QUARANTINED`. |
+| `scan_object` | object upload completes | Antivirus-scan the bytes (ClamAV), **streamed** chunk-by-chunk so the object is never read whole into memory. Clean → report `CLEAN`; infected (or unscannable by size) → purge the object and report `QUARANTINED`. |
 | `generate_variants` | a variant job is requested | Verify the source is still a processable image, render image variants with `imgtools_m8`, write them to object storage, and register each one. |
 
 The worker owns **no database**. It reads/writes object bytes through the shared
@@ -52,6 +52,13 @@ import imgtools.
   A job over any ceiling fails terminally even if a malformed or stale job bypasses
   media-service — which remains the request-policy owner; these are safety ceilings,
   not user-facing policy.
+* **Bounded memory.** The scan path **streams** the source to clamd chunk-by-chunk
+  (`stream_object`) instead of buffering it whole, after a metadata size gate
+  (`WORKER_MAX_SCAN_BYTES`, fail-closed). Before rendering, a header-only pixel
+  preflight (`WORKER_MAX_DECODED_PIXELS`) refuses decompression-bomb images before
+  the full decode allocates a raster. Concurrency is bounded
+  (`WORKER_MAX_CONCURRENT_JOBS` → ARQ `max_jobs`) so peak memory ≈ that count ×
+  the per-job source/decoded ceilings — size the container memory limit to match.
 
 ---
 
@@ -60,7 +67,8 @@ import imgtools.
 | Module | Responsibility |
 | --- | --- |
 | `worker/config.py` | `WorkerConfig` (pydantic-settings) read from the worker's **own** env; builds the SDK `ObjectStorageConfig`. |
-| `worker/scanner.py` | `Scanner` protocol, `ScanVerdict`, `ClamAVScanner` (TCP clamd), `get_scanner` factory. |
+| `worker/scanner.py` | `Scanner` protocol, `ScanVerdict`, `ClamAVScanner` (streams chunks to clamd via `_ChunkReader`), `get_scanner` factory. |
+| `worker/image_guard.py` | Pre-decode decompression-bomb guard (header-only pixel preflight; Pillow used for the header read only). |
 | `worker/media_types.py` | `content_type_for_format` — imgtools format name → MIME type. |
 | `worker/tasks.py` | `scan_object` / `generate_variants` task functions + internal HTTP callbacks. |
 | `worker/settings.py` | ARQ `WorkerSettings` + `on_startup`/`on_shutdown` resource wiring. |
@@ -82,10 +90,13 @@ Copy `worker/.env.example` to `worker/.env`. Every secret stays the literal
 | `MINIO_HOST` / `_PORT` / `_USE_SSL` / `_REGION` / `_ACCESS_KEY` / `_SECRET_KEY` | `minio` / `9000` / `false` / `eu-west-1` / – / – | Object storage. |
 | `CLAMAV_HOST` / `_PORT` / `_TIMEOUT_SECONDS` | `clamav` / `3310` / `120` | clamd daemon address. |
 | `WORKER_MAX_TRIES` / `_JOB_TIMEOUT_SECONDS` / `_KEEP_RESULT_SECONDS` | `5` / `300` / `3600` | ARQ tuning. |
-| `WORKER_MAX_SOURCE_BYTES` | `67108864` (64 MiB) | Max source object size accepted from storage metadata before download. |
+| `WORKER_MAX_CONCURRENT_JOBS` | `4` | Max jobs run at once (ARQ `max_jobs`); bounds peak memory with the per-job ceilings. |
+| `WORKER_MAX_SOURCE_BYTES` | `67108864` (64 MiB) | Max variant source object size accepted from storage metadata before download. |
 | `WORKER_MAX_OUTPUTS_PER_JOB` | `32` | Max variant outputs rendered per job (fan-out bound). |
 | `WORKER_MAX_OUTPUT_BYTES` | `134217728` (128 MiB) | Max total written output bytes per job (storage-write amplification bound). |
 | `WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS` | `120` | Wall-clock ceiling for one render call; must be ≤ `WORKER_JOB_TIMEOUT_SECONDS`. |
+| `WORKER_MAX_SCAN_BYTES` | `268435456` (256 MiB) | Max scan source size (from metadata, pre-stream); over-ceiling/unknown-size objects fail closed (quarantined). Keep ≤ clamd `StreamMaxLength`. |
+| `WORKER_MAX_DECODED_PIXELS` | `50000000` (50 MP) | Max decoded pixels for a variant source; header-only preflight that refuses decompression bombs before the full decode. |
 
 **Fail-closed credentials.** Under `ENVIRONMENT=production` (or
 `STRICT_PRODUCTION_MODE=true`) the worker refuses to boot — at config import,
