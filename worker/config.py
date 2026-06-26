@@ -10,6 +10,7 @@ env so the storage client stays settings-agnostic.
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +19,10 @@ from media_sdk_m8 import ObjectStorageConfig
 
 #: Default clamd TCP port (the ``clamav`` compose service listens here).
 DEFAULT_CLAMAV_PORT = 3310
+
+#: Placeholder value used in ``*.env.example`` (fail-closed). Production/strict
+#: boot refuses any required secret still set to this literal.
+PLACEHOLDER_SECRET = "changethis"
 
 
 class WorkerConfig(BaseSettings):
@@ -29,6 +34,15 @@ class WorkerConfig(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
     )
+
+    # ── Runtime posture ───────────────────────────────────────────────────────
+    #: Deployment environment, aligned with the auth/media service settings
+    #: (``auth_sdk_m8`` / ``media_service`` use the same Literal). ``local`` is
+    #: the home-lab default that intentionally tolerates placeholder credentials.
+    ENVIRONMENT: Literal["local", "development", "staging", "production"] = "local"
+    #: Force the production trust posture regardless of ``ENVIRONMENT``. Mirrors
+    #: the service-side ``STRICT_PRODUCTION_MODE`` flag.
+    STRICT_PRODUCTION_MODE: bool = False
 
     # ── Media-service internal API ────────────────────────────────────────────
     #: Base URL of media-service including its API prefix (e.g. ``…:8000/media``).
@@ -94,6 +108,49 @@ class WorkerConfig(BaseSettings):
             raise ValueError(
                 "WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS must not exceed "
                 "WORKER_JOB_TIMEOUT_SECONDS"
+            )
+        return self
+
+    @property
+    def is_production(self) -> bool:
+        """True when the worker runs under the production/strict trust posture."""
+        return self.ENVIRONMENT == "production" or self.STRICT_PRODUCTION_MODE
+
+    @model_validator(mode="after")
+    def _fail_closed_credentials_in_production(self) -> "WorkerConfig":
+        """Refuse to boot with default/empty/placeholder secrets in production.
+
+        ``local`` (the home-lab default) intentionally tolerates the
+        ``changethis`` placeholders so the example stack still boots; under
+        ``ENVIRONMENT == "production"`` or ``STRICT_PRODUCTION_MODE`` every
+        required secret must be a real, non-placeholder value or the process
+        fails closed at import — not only behind the compose preflight.
+        """
+        if not self.is_production:
+            return self
+
+        def _is_unsafe(value: str) -> bool:
+            return value == "" or value == PLACEHOLDER_SECRET
+
+        unsafe: list[str] = []
+        if _is_unsafe(self.MEDIA_INTERNAL_SERVICE_TOKEN.get_secret_value()):
+            unsafe.append("MEDIA_INTERNAL_SERVICE_TOKEN")
+        if _is_unsafe(self.MINIO_ACCESS_KEY):
+            unsafe.append("MINIO_ACCESS_KEY")
+        if _is_unsafe(self.MINIO_SECRET_KEY.get_secret_value()):
+            unsafe.append("MINIO_SECRET_KEY")
+        # Redis auth is required whenever a Redis username is configured (the
+        # compose stack always sets ``appuser``); an unset/placeholder password
+        # then fails closed too.
+        if self.MEDIA_REDIS_USER:
+            password = self.redis_password
+            if password is None or _is_unsafe(password):
+                unsafe.append("MEDIA_REDIS_PASSWORD")
+
+        if unsafe:
+            raise ValueError(
+                "Worker refuses to boot under production/strict mode with "
+                "default, empty, or placeholder credentials: " + ", ".join(unsafe)
             )
         return self
 

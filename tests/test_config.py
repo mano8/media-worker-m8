@@ -5,7 +5,12 @@ from pydantic import SecretStr, ValidationError
 
 from media_sdk_m8 import ObjectStorageConfig
 
-from worker.config import DEFAULT_CLAMAV_PORT, WorkerConfig, get_config
+from worker.config import (
+    DEFAULT_CLAMAV_PORT,
+    PLACEHOLDER_SECRET,
+    WorkerConfig,
+    get_config,
+)
 
 
 def test_storage_config_maps_env_to_sdk_config():
@@ -103,4 +108,104 @@ def test_credential_isolation_distinct_credentials_accepted():
         MEDIA_REDIS_PASSWORD=SecretStr("RedisPass!1secure"),
         MINIO_SECRET_KEY=SecretStr("MinioKey!1secure"),
     )
+    assert cfg.service_token == "ServiceToken!1secure"
+
+
+# ── Fail-closed production credential gate (P1.1) ─────────────────────────────
+def test_environment_defaults_to_local():
+    cfg = WorkerConfig()
+    assert cfg.ENVIRONMENT == "local"
+    assert cfg.STRICT_PRODUCTION_MODE is False
+    assert cfg.is_production is False
+
+
+def test_is_production_under_production_environment():
+    cfg = WorkerConfig(ENVIRONMENT="production")
+    assert cfg.is_production is True
+
+
+def test_is_production_under_strict_mode():
+    cfg = WorkerConfig(ENVIRONMENT="local", STRICT_PRODUCTION_MODE=True)
+    assert cfg.is_production is True
+
+
+def test_local_mode_tolerates_placeholder_credentials():
+    cfg = WorkerConfig(
+        ENVIRONMENT="local",
+        MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr(PLACEHOLDER_SECRET),
+        MINIO_ACCESS_KEY="",
+        MINIO_SECRET_KEY=SecretStr(""),
+        MEDIA_REDIS_PASSWORD=None,
+    )
+    assert cfg.service_token == PLACEHOLDER_SECRET
+
+
+def test_production_rejects_placeholder_service_token():
+    with pytest.raises(ValidationError, match="MEDIA_INTERNAL_SERVICE_TOKEN"):
+        WorkerConfig(
+            ENVIRONMENT="production",
+            MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr(PLACEHOLDER_SECRET),
+        )
+
+
+def test_strict_mode_rejects_placeholder_service_token():
+    with pytest.raises(ValidationError, match="MEDIA_INTERNAL_SERVICE_TOKEN"):
+        WorkerConfig(
+            ENVIRONMENT="local",
+            STRICT_PRODUCTION_MODE=True,
+            MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr(PLACEHOLDER_SECRET),
+        )
+
+
+def test_production_rejects_empty_minio_access_key():
+    with pytest.raises(ValidationError, match="MINIO_ACCESS_KEY"):
+        WorkerConfig(ENVIRONMENT="production", MINIO_ACCESS_KEY="")
+
+
+def test_production_rejects_placeholder_minio_secret_key():
+    with pytest.raises(ValidationError, match="MINIO_SECRET_KEY"):
+        WorkerConfig(
+            ENVIRONMENT="production",
+            MINIO_SECRET_KEY=SecretStr(PLACEHOLDER_SECRET),
+        )
+
+
+def test_production_rejects_missing_redis_password_when_user_set():
+    with pytest.raises(ValidationError, match="MEDIA_REDIS_PASSWORD"):
+        WorkerConfig(
+            ENVIRONMENT="production",
+            MEDIA_REDIS_USER="appuser",
+            MEDIA_REDIS_PASSWORD=None,
+        )
+
+
+def test_production_rejects_placeholder_redis_password_when_user_set():
+    with pytest.raises(ValidationError, match="MEDIA_REDIS_PASSWORD"):
+        WorkerConfig(
+            ENVIRONMENT="production",
+            MEDIA_REDIS_USER="appuser",
+            MEDIA_REDIS_PASSWORD=SecretStr(PLACEHOLDER_SECRET),
+        )
+
+
+def test_production_allows_missing_redis_password_when_auth_disabled():
+    cfg = WorkerConfig(
+        ENVIRONMENT="production",
+        MEDIA_REDIS_USER="",
+        MEDIA_REDIS_PASSWORD=None,
+    )
+    assert cfg.redis_password is None
+    assert cfg.is_production is True
+
+
+def test_production_accepts_real_credentials():
+    cfg = WorkerConfig(
+        ENVIRONMENT="production",
+        MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("ServiceToken!1secure"),
+        MINIO_ACCESS_KEY="minioadmin",
+        MINIO_SECRET_KEY=SecretStr("MinioKey!1secure"),
+        MEDIA_REDIS_USER="appuser",
+        MEDIA_REDIS_PASSWORD=SecretStr("RedisPass!1secure"),
+    )
+    assert cfg.is_production is True
     assert cfg.service_token == "ServiceToken!1secure"

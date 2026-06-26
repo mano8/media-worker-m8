@@ -8,6 +8,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- `WorkerConfig` now **fails closed** for unsafe runtime credentials (security
+  plan P1.1). New `ENVIRONMENT` (`local`/`development`/`staging`/`production`)
+  and `STRICT_PRODUCTION_MODE` settings mirror the auth/media services; under the
+  production/strict posture the worker refuses to boot — at config import, not
+  only behind the compose preflight — when `MEDIA_INTERNAL_SERVICE_TOKEN`,
+  `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, or (whenever `MEDIA_REDIS_USER` is set)
+  `MEDIA_REDIS_PASSWORD` is empty or still the `changethis` placeholder. `local`
+  (the home-lab default) keeps tolerating the placeholders so the example stack
+  boots; `.env.example` placeholders stay the literal `changethis`.
 - `generate_variants` now refuses a variant job whose source object is not stored
   as an image (`image/*`) before any download or decode (security plan P0.1,
   worker-side defense in depth). The worker stats the source via the SDK and, on a

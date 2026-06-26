@@ -74,6 +74,8 @@ Copy `worker/.env.example` to `worker/.env`. Every secret stays the literal
 
 | Variable | Default | Notes |
 | --- | --- | --- |
+| `ENVIRONMENT` | `local` | Trust posture (`local`/`development`/`staging`/`production`), aligned with the auth/media services. |
+| `STRICT_PRODUCTION_MODE` | `false` | Force the production posture regardless of `ENVIRONMENT`. |
 | `MEDIA_API_URL` | `http://media-service:8000/media` | Base URL **including** the API prefix; the worker appends `/v1/internal/…`. |
 | `MEDIA_INTERNAL_SERVICE_TOKEN` | `changethis` | Must match media-service; high-entropy in prod. |
 | `MEDIA_REDIS_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_NAMESPACE` | `media_redis_cache` / `6379` / `appuser` / – / `media` | Media-owned Redis (ARQ queue). |
@@ -84,6 +86,14 @@ Copy `worker/.env.example` to `worker/.env`. Every secret stays the literal
 | `WORKER_MAX_OUTPUTS_PER_JOB` | `32` | Max variant outputs rendered per job (fan-out bound). |
 | `WORKER_MAX_OUTPUT_BYTES` | `134217728` (128 MiB) | Max total written output bytes per job (storage-write amplification bound). |
 | `WORKER_IMAGE_PROCESS_TIMEOUT_SECONDS` | `120` | Wall-clock ceiling for one render call; must be ≤ `WORKER_JOB_TIMEOUT_SECONDS`. |
+
+**Fail-closed credentials.** Under `ENVIRONMENT=production` (or
+`STRICT_PRODUCTION_MODE=true`) the worker refuses to boot — at config import,
+not only behind the compose preflight — when any required secret is empty or
+still the `changethis` placeholder: `MEDIA_INTERNAL_SERVICE_TOKEN`,
+`MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, and (whenever `MEDIA_REDIS_USER` is set)
+`MEDIA_REDIS_PASSWORD`. `local` keeps tolerating the placeholders so the
+home-lab example stack still boots.
 
 ---
 
