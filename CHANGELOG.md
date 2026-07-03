@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-03
+
 ### Security
 
 - The AV scan path now **streams** the source object to ClamAV chunk-by-chunk
@@ -52,18 +54,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the request-policy owner; these are runtime-local safety ceilings. Source-byte
   streaming and decoded-pixel limits are addressed in plan item P1.2 (above).
 
-### Changed
-
-- Pin **`media-sdk-m8>=0.4.0`** (from `>=0.1.0`) to stay aligned with the latest
-  shared SDK. 0.3.0 added the `OutboxEventPayload` webhook contract; 0.4.0 adds
-  the chunked `ObjectStorage.stream_object` read primitive (used by
-  media-service-m8 for streaming SHA-256 verification, plan item 6.x.3). The
-  worker's consumed contracts (`ScanJobPayload` / `VariantJobPayload`) and its
-  storage-client usage are unchanged, so this remains a floor bump with no code
-  change. Version bumped to 0.2.1.
-
 ### Added
 
+- **Hash-locked production dependencies** (`worker/requirements_prod.lock`,
+  finding 11.8): `pip-compile --generate-hashes` pins every transitive dep to an
+  exact version + `sha256`; Dockerfile non-dev install enforces
+  `pip install --require-hashes -r requirements_prod.lock`; `test_dependency_lock.py`
+  locks the invariants in CI.
+- **Supply-chain attestations** (`docker-publish.yaml`, finding 11.5): OIDC
+  `id-token:write` + `attestations:write` permissions, `anchore/sbom-action` (SPDX
+  JSON), `--provenance=mode=max`, and keyless `cosign sign` on every published
+  image; SBOM + Trivy JSON uploaded as release assets. `test_ci_policy.py` guards
+  digest pins, permissions, SBOM, provenance, cosign, and SHA-pinned action refs.
+- **Single CI gate** (finding 11.7): stale `ci.yml` (unpinned refs, no
+  attestation permissions) removed; `CI.yaml` is the sole CI gate. Policy tests
+  `test_no_duplicate_ci_yml` / `test_ci_yaml_exists` / `test_ci_yaml_actions_are_sha_pinned`
+  lock the invariant.
 - Bootstrapped `media-worker-m8` — the async [ARQ](https://arq-docs.helpmanual.io/)
   worker that runs media-service-m8's background jobs off the media-owned Redis.
   The worker owns no database, is the sole `imgtools_m8` consumer, and reports
@@ -106,6 +112,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Pin **`media-sdk-m8>=0.5.1`** (from `>=0.4.0`) to align with the fleet release
+  train (SDK 0.5.1 → worker 0.3.0 → service 0.0.11). 0.5.0 added the
+  `public_endpoint` flag to `ObjectMetadata`; 0.5.1 is a release-hygiene cut.
+  The worker's consumed contracts and storage-client usage are unchanged; this is
+  a floor-only bump. Lock regen deferred until 0.5.1 publishes to the index (lock
+  stays self-consistent at 0.5.0 — dep-lock tests check name presence, not
+  version). Version bumped to **0.3.0**.
+- Pin **`media-sdk-m8>=0.4.0`** (from `>=0.1.0`) to stay aligned with the latest
+  shared SDK. 0.3.0 added the `OutboxEventPayload` webhook contract; 0.4.0 adds
+  the chunked `ObjectStorage.stream_object` read primitive. Version bumped to
+  0.2.1.
 - Bumped `arq>=0.28.0` (from `>=0.26.0`) — adds Python 3.14 support (the
   `worker/Dockerfile` base image) and pulls the cron-freeze (0.26.3) and
   task-retry race-condition (0.26.2) fixes; no API changes. Pinned `redis` to

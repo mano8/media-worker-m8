@@ -132,6 +132,26 @@ docker compose --env-file worker.env up -d --build
 
 ---
 
+## Reproducible builds
+
+The production Docker image installs from a fully pinned, hash-verified lock
+(`worker/requirements_prod.lock`). Every transitive dependency is exact-pinned
+(`==`) and carries a `sha256` hash; `pip install --require-hashes` refuses to
+install anything not in the lock.
+
+To regenerate the lock (Python 3.12, matching the fleet baseline):
+
+```bash
+pip-compile --generate-hashes --no-emit-index-url \
+    --output-file=worker/requirements_prod.lock worker/requirements_prod.txt
+```
+
+`tests/test_dependency_lock.py` and `tests/test_ci_policy.py` assert the lock
+integrity and the publish-workflow supply-chain invariants (SBOM, provenance,
+cosign, SHA-pinned action refs) in CI so neither can silently regress.
+
+---
+
 ## Development
 
 ```bash
