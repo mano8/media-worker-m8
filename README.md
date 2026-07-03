@@ -1,5 +1,11 @@
 # media-worker-m8
 
+![CI/CD](https://github.com/mano8/media-worker-m8/actions/workflows/CI.yaml/badge.svg?branch=main)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/4d1f64dbb3074ba6a86daf5bd869fe99)](https://app.codacy.com/gh/mano8/media-worker-m8/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![codecov](https://codecov.io/gh/mano8/media-worker-m8/graph/badge.svg?token=K77SVX9D72)](https://codecov.io/gh/mano8/media-worker-m8)
+[![Docker Pulls](https://img.shields.io/docker/pulls/tepochtli/media-worker-m8)](https://hub.docker.com/r/tepochtli/media-worker-m8)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/mano8/media-worker-m8/blob/main/LICENSE)
+
 Async [ARQ](https://arq-docs.helpmanual.io/) worker for background media jobs in
 the M8 platform. It consumes jobs enqueued by **media-service-m8** from the
 media-owned Redis and runs two tasks:
