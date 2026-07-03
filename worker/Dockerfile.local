@@ -1,0 +1,45 @@
+# ---------- DEV BUILD STAGE ----------
+# Dev-only image for local tests against the sibling media-sdk-m8 checkout.
+# Build from the media-worker-m8 repo root and pass the local SDK as a context:
+#   docker build -f worker/Dockerfile.local \
+#     --build-context media-sdk-m8=../media-sdk-m8 .
+FROM python:3.14-slim AS builder
+
+WORKDIR /install
+
+ENV PIP_ROOT_USER_ACTION=ignore
+
+COPY worker/requirements_base.txt .
+COPY worker/requirements_dev.txt .
+COPY --from=media-sdk-m8 . /tmp/media-sdk-m8
+
+RUN pip install --upgrade "pip==26.1.1" && \
+    sed '/^media-sdk-m8/d' requirements_base.txt > requirements_base_local.txt && \
+    sed '/requirements_base[.]txt/d' requirements_dev.txt > requirements_dev_local.txt && \
+    pip install --prefix=/install --no-cache-dir -r requirements_base_local.txt && \
+    pip install --prefix=/install --no-cache-dir /tmp/media-sdk-m8 && \
+    pip install --prefix=/install --no-cache-dir -r requirements_dev_local.txt
+
+
+# ---------- DEV RUNTIME STAGE ----------
+FROM python:3.14-slim
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/opt
+
+# No ClamAV binary or virus database is bundled - the worker is a thin clamd
+# client and reaches the daemon owned by the `clamav` compose service over TCP.
+
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --create-home appuser
+
+WORKDIR /opt
+
+COPY --from=builder /install /usr/local
+COPY --chown=appuser:appuser worker ./worker
+
+USER appuser
+
+# ARQ worker process - consumes scan_object / generate_variants from media Redis.
+CMD ["arq", "worker.settings.WorkerSettings"]

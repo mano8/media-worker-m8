@@ -10,4 +10,4 @@ results to media-service-m8 over its internal HTTP API (Bearer service token) an
 reads/writes object bytes through the shared ``media_sdk_m8`` storage client.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

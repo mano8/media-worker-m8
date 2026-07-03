@@ -57,3 +57,6 @@ class WorkerSettings:
     max_tries = _config.WORKER_MAX_TRIES
     job_timeout = _config.WORKER_JOB_TIMEOUT_SECONDS
     keep_result = _config.WORKER_KEEP_RESULT_SECONDS
+    # Bound how many jobs decode/render at once so peak memory stays within the
+    # container limit (≈ max_jobs × per-job source/decoded ceilings, P1.2).
+    max_jobs = _config.WORKER_MAX_CONCURRENT_JOBS

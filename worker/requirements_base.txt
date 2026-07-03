@@ -10,9 +10,15 @@ clamd>=1.0.2
 # Image-variant rendering (worker-only; the sole imgtools consumer)
 imgtools_m8>=2.1.0
 
+# Pillow: used ONLY for the pre-decode image header probe (decompression-bomb
+# guard, worker/image_guard.py) — a header read, never a render. All real image
+# computation stays delegated to imgtools_m8. Declared explicitly because the
+# worker imports PIL directly; the pin tracks imgtools_m8's own Pillow floor.
+Pillow>=12.2.0
+
 # Shared media SDK: object-storage client + producer↔consumer job contracts
 # Track the latest SDK so the worker stays aligned with the shared contract set.
-media-sdk-m8>=0.3.0
+media-sdk-m8>=0.5.1
 
 minio>=7.2.18
 
