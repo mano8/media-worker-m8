@@ -41,7 +41,9 @@ ENV PYTHONPATH=/opt
 # PKCS7_verify; fixed in 3.5.6-1~deb13u2, not yet in the pinned base image).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        openssl libssl3t64 openssl-provider-legacy && \
+        openssl=3.5.6-1~deb13u2 \
+        libssl3t64=3.5.6-1~deb13u2 \
+        openssl-provider-legacy=3.5.6-1~deb13u2 && \
     rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1000 appuser && \
