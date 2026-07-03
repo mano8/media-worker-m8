@@ -37,6 +37,13 @@ ENV PYTHONPATH=/opt
 # No ClamAV binary or virus database is bundled — the worker is a thin clamd
 # *client* and reaches the daemon owned by the `clamav` compose service over TCP.
 
+# Patch OpenSSL packages to the fixed version (CVE-2026-45447 — heap UAF in
+# PKCS7_verify; fixed in 3.5.6-1~deb13u2, not yet in the pinned base image).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        openssl libssl3t64 openssl-provider-legacy && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid appuser --create-home appuser
 

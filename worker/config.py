@@ -22,7 +22,7 @@ DEFAULT_CLAMAV_PORT = 3310
 
 #: Placeholder value used in ``*.env.example`` (fail-closed). Production/strict
 #: boot refuses any required secret still set to this literal.
-PLACEHOLDER_SECRET = "changethis"
+PLACEHOLDER_SECRET = "changethis"  # nosec B105
 
 
 class WorkerConfig(BaseSettings):
