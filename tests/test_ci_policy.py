@@ -1,4 +1,4 @@
-"""CI workflow and Dockerfile policy tests — finding 11.5.
+"""CI workflow and Dockerfile policy tests — findings 11.5 + 11.7.
 
 Asserts that the publish pipeline emits a verifiable supply-chain artefact set
 and that the Dockerfile resolves to a fixed, digest-pinned base layer.
@@ -15,10 +15,11 @@ Rules asserted here (11.5):
 - Every ``uses:`` reference in docker-publish.yaml must be pinned to a full
   40-char commit SHA (immutable action reference).
 
-Notes:
-- 11.7 invariants (no duplicate ci.yml, secret-scan job, CI.yaml action pins)
-  are added to this file when that phase ships.
-- No Docker or network access is required to run these tests.
+Rules asserted here (11.7):
+- The stale duplicate ``ci.yml`` must not exist; ``CI.yaml`` is the sole CI gate.
+- Every ``uses:`` reference in ``CI.yaml`` must be pinned to a full 40-char SHA.
+
+No Docker or network access is required to run these tests.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ WORKER = REPO_ROOT / "worker"
 DOCKERFILE = WORKER / "Dockerfile"
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 DOCKER_PUBLISH_YAML = WORKFLOWS / "docker-publish.yaml"
+CI_YAML = WORKFLOWS / "CI.yaml"
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _USES_RE = re.compile(r"uses:\s+([a-zA-Z0-9_.\-]+/[a-zA-Z0-9_.\-]+@(\S+))")
@@ -119,4 +121,41 @@ def test_docker_publish_yaml_actions_are_sha_pinned() -> None:
     for full_ref, sha_part in refs:
         assert _SHA_RE.match(sha_part), (
             f"docker-publish.yaml: '{full_ref}' is not SHA-pinned — use a full 40-char commit hash."
+        )
+
+
+# ---------------------------------------------------------------------------
+# 11.7 — Single CI gate (no stale duplicate ci.yml)
+# ---------------------------------------------------------------------------
+
+
+def test_no_duplicate_ci_yml() -> None:
+    """The stale ``ci.yml`` must not exist; ``CI.yaml`` is the sole CI gate.
+
+    A duplicate ``ci.yml`` running alongside ``CI.yaml`` causes two CI jobs to
+    fire on every push/PR with different tool versions and permission sets,
+    creating a confusion risk and a potential security bypass (the older file
+    lacked digest-pinned actions and OIDC permissions).
+    """
+    stale = WORKFLOWS / "ci.yml"
+    assert not stale.exists(), (
+        "Stale duplicate .github/workflows/ci.yml exists alongside CI.yaml — "
+        "delete ci.yml so only the hardened CI.yaml gate runs."
+    )
+
+
+def test_ci_yaml_exists() -> None:
+    """CI.yaml must be present as the canonical CI workflow."""
+    assert CI_YAML.exists(), (
+        ".github/workflows/CI.yaml not found — this is the canonical CI gate and must not be removed."
+    )
+
+
+def test_ci_yaml_actions_are_sha_pinned() -> None:
+    """Every action reference in CI.yaml must be pinned to a full 40-char SHA."""
+    refs = _action_refs(CI_YAML)
+    assert refs, "No action references found in CI.yaml."
+    for full_ref, sha_part in refs:
+        assert _SHA_RE.match(sha_part), (
+            f"CI.yaml: '{full_ref}' is not SHA-pinned — use a full 40-char commit hash."
         )
