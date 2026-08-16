@@ -25,7 +25,7 @@ import imgtools.
 
 ## Architecture
 
-```
+```text
                      enqueue (ARQ / media Redis)
  media-service-m8  ───────────────────────────────▶  media-worker-m8
         ▲                                                   │
