@@ -6,6 +6,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-16
+
+### Added
+
+- `tests/test_changelog_version_parity.py` — asserts `worker.__version__` has a
+  matching `## [x.y.z]` heading in `CHANGELOG.md` and that those headings are
+  unique, so a release can no longer ship undocumented
+  (`A32-changelog-version-parity`).
+- `.markdownlint.yaml` — the fleet-baseline `MD024` `siblings_only` rule, so the
+  Keep a Changelog format (which repeats `### Added` / `### Changed` across
+  releases) stops failing Codacy (`A34-changelog-md024-baseline`).
+- `.gitattributes` enforcing LF line endings and marking binary files.
+- `AGENTS.md` and `REPOSITORY_CONTEXT.md` documenting the worker's role,
+  boundaries, and the `imgtools_m8`-consumer-of-record rule.
+
+### Changed
+
+- **Version bumped `0.3.0` → `0.4.0`** to align with the fleet version matrix.
+  No runtime behavior change: everything above is tooling, lint and
+  documentation.
+- `.codacy.yml` excludes the repository's documentation files from analysis.
+
 ## [0.3.0] - 2026-07-03
 
 ### Security
