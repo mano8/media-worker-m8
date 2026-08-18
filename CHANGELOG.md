@@ -27,6 +27,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   No runtime behavior change: everything above is tooling, lint and
   documentation.
 - `.codacy.yml` excludes the repository's documentation files from analysis.
+- **CI test matrix floor raised to Python 3.12 (3.11 dropped)**, matching the
+  fleet's accepted 3.12–3.14 range (`A32` follow-up). The Codecov and Codacy
+  coverage uploads were conditioned on the 3.11 leg, so both moved to 3.12 with
+  it — dropping the leg alone would have silently stopped every coverage upload.
+- **`media-sdk-m8` floor raised `>=0.5.1` → `>=0.6.0,<0.7.0`.** The upper bound
+  is new: under the SDK's 0.x SemVer a minor bump is breaking (`0.6.0` itself
+  raises its Python floor to 3.12), so an unbounded floor would keep pulling
+  breaking minors.
+- **`imgtools_m8` floor raised `>=2.1.0` → `>=2.1.1`** and
+  `requirements_prod.lock` re-pinned to `2.1.1`.
 
 ## [0.3.0] - 2026-07-03
 

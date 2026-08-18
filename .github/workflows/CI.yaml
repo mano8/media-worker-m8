@@ -89,7 +89,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -113,7 +113,7 @@ jobs:
         run: pytest --cov-report=xml --cov-fail-under=100
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.11' && github.actor != 'dependabot[bot]'
+        if: matrix.python-version == '3.12' && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -121,7 +121,7 @@ jobs:
           verbose: true
 
       - name: Upload coverage to Codacy
-        if: matrix.python-version == '3.11' && github.actor != 'dependabot[bot]'
+        if: matrix.python-version == '3.12' && github.actor != 'dependabot[bot]'
         uses: codacy/codacy-coverage-reporter-action@89d6c85cfafaec52c72b6c5e8b2878d33104c699 # v1
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
