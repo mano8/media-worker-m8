@@ -6,11 +6,10 @@ builds the shared resources (object-storage client, scanner, HTTP client) that
 every task reads from the ARQ ``ctx`` mapping.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 from arq.connections import RedisSettings
-
 from media_sdk_m8 import ObjectStorage
 
 from worker.config import WorkerConfig, get_config
@@ -50,7 +49,7 @@ _config = get_config()
 class WorkerSettings:
     """ARQ ``WorkerSettings`` consumed by the ``arq`` CLI."""
 
-    functions = [scan_object, generate_variants]
+    functions: ClassVar[list] = [scan_object, generate_variants]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = redis_settings_from_config(_config)

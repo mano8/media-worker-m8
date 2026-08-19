@@ -35,8 +35,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is new: under the SDK's 0.x SemVer a minor bump is breaking (`0.6.0` itself
   raises its Python floor to 3.12), so an unbounded floor would keep pulling
   breaking minors.
-- **`imgtools_m8` floor raised `>=2.1.0` → `>=2.1.1`** and
-  `requirements_prod.lock` re-pinned to `2.1.1`.
+- **`imgtools_m8` floor raised `>=2.1.0` → `>=2.1.1`**, and
+  `requirements_prod.lock` regenerated on Linux against the published releases:
+  `imgtools_m8` `2.1.1`, `media-sdk-m8` `0.6.0`. The regeneration also drops
+  `colorama` — a Windows-only transitive of `click` that entered the lock from a
+  Windows host and was never installable in the `python:3.14-slim` image, the
+  same correction `media-service-m8` applied to its own lock.
+- **20 `ruff check` findings fixed** (9 `I001`, 7 `RUF100`, and one each of
+  `B017`, `BLE001`, `RUF012`, `SIM102`). All predated this release: `ruff.toml`
+  declares only `line-length` and `exclude`, so the repository inherits ruff's
+  default rule set, and CI installs ruff unpinned — the default set widening in
+  ruff 0.16 turned them red. The two that are not mechanical are recorded here:
+  `worker/tasks.py`'s variant-loop `except Exception` is the job-failure
+  boundary and keeps its catch-all behaviour under an explicit `noqa` with that
+  rationale, and `tests/test_image_guard.py` now asserts the `OSError` that
+  `decoded_pixel_count` documents rather than a bare `Exception`.
 
 ## [0.3.0] - 2026-07-03
 

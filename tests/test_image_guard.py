@@ -2,14 +2,13 @@
 
 import pytest
 
+from tests.conftest import make_png_bytes
 from worker.config import WorkerConfig
 from worker.image_guard import (
     DecodedImageTooLargeError,
     assert_decoded_pixels_within_limit,
     decoded_pixel_count,
 )
-
-from tests.conftest import make_png_bytes
 
 
 def test_decoded_pixel_count_reads_header_dimensions():
@@ -32,5 +31,7 @@ def test_over_limit_raises_before_decode():
 
 
 def test_non_image_bytes_raise():
-    with pytest.raises(Exception):
+    # Pillow raises UnidentifiedImageError (an OSError subclass) for a corrupt
+    # or non-image header — the contract decoded_pixel_count documents.
+    with pytest.raises(OSError):
         decoded_pixel_count(b"not-an-image")

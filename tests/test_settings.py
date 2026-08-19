@@ -3,7 +3,6 @@
 import httpx
 import pytest
 from arq.connections import RedisSettings
-
 from media_sdk_m8 import ObjectStorage
 
 from worker.config import WorkerConfig

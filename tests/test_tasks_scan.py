@@ -4,14 +4,12 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-
 from media_sdk_m8 import ScanJobPayload
 
+from tests.conftest import SERVICE_TOKEN, WORKER_CLIENT_ID, FakeScanner
 from worker.config import WorkerConfig
 from worker.scanner import ScanVerdict
 from worker.tasks import scan_object
-
-from tests.conftest import SERVICE_TOKEN, WORKER_CLIENT_ID, FakeScanner
 
 
 def _payload():

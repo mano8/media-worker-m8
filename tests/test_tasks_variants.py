@@ -5,12 +5,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-
 from media_sdk_m8 import VariantJobPayload, VariantSpec
-
-from worker import tasks
-from worker.config import WorkerConfig
-from worker.tasks import generate_variants
 
 from tests.conftest import (
     PNG_SOURCE_BYTES,
@@ -18,6 +13,9 @@ from tests.conftest import (
     WORKER_CLIENT_ID,
     make_variant_result,
 )
+from worker import tasks
+from worker.config import WorkerConfig
+from worker.tasks import generate_variants
 
 
 def _spec(name, ext="webp", bucket="public-media"):

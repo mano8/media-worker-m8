@@ -1,9 +1,8 @@
 """Tests for worker.config — env-driven settings + SDK config building."""
 
 import pytest
-from pydantic import SecretStr, ValidationError
-
 from media_sdk_m8 import ObjectStorageConfig
+from pydantic import SecretStr, ValidationError
 
 from worker.config import (
     DEFAULT_CLAMAV_PORT,

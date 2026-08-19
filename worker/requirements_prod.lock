@@ -149,10 +149,6 @@ click==8.4.2 \
     --hash=sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6 \
     --hash=sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
     # via arq
-colorama==0.4.6 \
-    --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
-    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
-    # via click
 h11==0.16.0 \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
@@ -289,9 +285,9 @@ imgtools-m8==2.1.1 \
     --hash=sha256:ec2c2e7e638fc41a00eb903b9f55d1df774381d7d1f214444cb64bd26cd711a3 \
     --hash=sha256:fcb39d0b55ce0a1ca1224b666e161802e702a32e57debfaa4445fdeb4bc12a49
     # via -r requirements_base.txt
-media-sdk-m8==0.5.1 \
-    --hash=sha256:c888bb364fcaab1f851193d0fe8755b3cd8009981b6d9532cf3f93f15aa78e7f \
-    --hash=sha256:f0d396402ca5daf48d855d39e5510c2faf9f30aa277a2c2921723027e4571aee
+media-sdk-m8==0.6.0 \
+    --hash=sha256:4a1e228fa4c76683ae5fd724acff3f6afbeecf41bd044b6f34996bef8780d31d \
+    --hash=sha256:e8162c1abb21ff9c9c6eaed3f1cc3f85f2d3fd763c30b39ca2e58ed57d3e2876
     # via -r requirements_base.txt
 minio==7.2.20 \
     --hash=sha256:95898b7a023fbbfde375985aa77e2cd6a0762268db79cf886f002a9ea8e68598 \

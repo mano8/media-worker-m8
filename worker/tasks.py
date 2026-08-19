@@ -13,9 +13,7 @@ import asyncio
 from typing import Any
 
 from imgtools_m8 import process_image_async
-
-from media_sdk_m8 import ScanJobPayload, VariantJobPayload, VariantSpec
-from media_sdk_m8 import ObjectStorage
+from media_sdk_m8 import ObjectStorage, ScanJobPayload, VariantJobPayload, VariantSpec
 
 from worker.config import WorkerConfig
 from worker.image_guard import assert_decoded_pixels_within_limit
@@ -306,7 +304,9 @@ async def generate_variants(ctx: dict[str, Any], payload: VariantJobPayload) -> 
             )
             await _register_variant(ctx, payload.media_object_id, spec, result)
             created += 1
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — job-failure boundary
+        # Any render/storage failure marks the job FAILED and reports the
+        # variants already created; nothing may escape into the ARQ loop.
         await _update_job(ctx, payload.job_id, JOB_STATUS_FAILED, error=str(exc))
         return created
 
