@@ -8,12 +8,13 @@
 
 Async [ARQ](https://arq-docs.helpmanual.io/) worker for background media jobs in
 the M8 platform. It consumes jobs enqueued by **media-service-m8** from the
-media-owned Redis and runs two tasks:
+media-owned Redis and runs three tasks:
 
 | Task | Trigger | What it does |
 | --- | --- | --- |
 | `scan_object` | object upload completes | Antivirus-scan the bytes (ClamAV), **streamed** chunk-by-chunk so the object is never read whole into memory. Clean → report `CLEAN`; infected (or unscannable by size) → purge the object and report `QUARANTINED`. |
 | `generate_variants` | a variant job is requested | Verify the source is still a processable image, render image variants with `imgtools_m8`, write them to object storage, and register each one. |
+| `build_export_archive` | an archive export is requested | Deserialize the SDK contract, stream the authorized objects into a temporary ZIP, stream-upload and presign it, then report the result to media-service. |
 
 The worker owns **no database**. It reads/writes object bytes through the shared
 [`media-sdk-m8`](../media-sdk-m8) storage client and reports results to
@@ -32,6 +33,7 @@ import imgtools.
         │  POST /v1/internal/objects/{id}/scan-result       │ get/put/remove bytes
         │  POST /v1/internal/objects/{id}/variants          ▼
         │  PATCH /v1/internal/variant-jobs/{id}          MinIO  (via media-sdk-m8)
+        │  PATCH /v1/internal/export-jobs/{id}              │
         └───────────────  (Bearer service token)  ──────────┘
                                                             │ INSTREAM (TCP 3310)
                                                             ▼
@@ -48,6 +50,9 @@ import imgtools.
 * **Worker needs no preset/key knowledge.** media-service builds every
   `VariantSpec` (imgtools-shaped `output_options` + `target_bucket`/`target_key`)
   inside the `VariantJobPayload`; the worker just renders, stores, and registers.
+  The same boundary holds for archives: media-service resolves the authorized
+  manifest and storage references into `ExportArchiveJobPayload`; the worker
+  never queries the service database or re-decides scope.
 * **Pre-decode scan-readiness defense.** Before downloading or decoding a source,
   `generate_variants` stats the object and refuses anything that is not stored as
   an image (`image/*`) — defense in depth for media-service's scan-readiness gate
@@ -65,6 +70,9 @@ import imgtools.
   the full decode allocates a raster. Concurrency is bounded
   (`WORKER_MAX_CONCURRENT_JOBS` → ARQ `max_jobs`) so peak memory ≈ that count ×
   the per-job source/decoded ceilings — size the container memory limit to match.
+  Archive assembly likewise streams every source into a temporary file and then
+  passes that open handle to `ObjectStorage.put_object_stream`; no collection ZIP
+  or source object is materialized as one in-memory `bytes` value.
 
 ---
 
@@ -76,7 +84,7 @@ import imgtools.
 | `worker/scanner.py` | `Scanner` protocol, `ScanVerdict`, `ClamAVScanner` (streams chunks to clamd via `_ChunkReader`), `get_scanner` factory. |
 | `worker/image_guard.py` | Pre-decode decompression-bomb guard (header-only pixel preflight; Pillow used for the header read only). |
 | `worker/media_types.py` | `content_type_for_format` — imgtools format name → MIME type. |
-| `worker/tasks.py` | `scan_object` / `generate_variants` task functions + internal HTTP callbacks. |
+| `worker/tasks.py` | `scan_object` / `generate_variants` / `build_export_archive` task functions + internal HTTP callbacks. |
 | `worker/settings.py` | ARQ `WorkerSettings` + `on_startup`/`on_shutdown` resource wiring. |
 
 ---

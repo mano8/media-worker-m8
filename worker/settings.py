@@ -1,7 +1,7 @@
 """ARQ worker entrypoint.
 
 ``arq worker.settings.WorkerSettings`` boots the worker: it connects to the
-media-owned Redis, registers the two task functions, and — once per process —
+media-owned Redis, registers the task functions, and — once per process —
 builds the shared resources (object-storage client, scanner, HTTP client) that
 every task reads from the ARQ ``ctx`` mapping.
 """
@@ -14,7 +14,7 @@ from media_sdk_m8 import ObjectStorage
 
 from worker.config import WorkerConfig, get_config
 from worker.scanner import get_scanner
-from worker.tasks import generate_variants, scan_object
+from worker.tasks import build_export_archive, generate_variants, scan_object
 
 
 def redis_settings_from_config(config: WorkerConfig) -> RedisSettings:
@@ -49,7 +49,7 @@ _config = get_config()
 class WorkerSettings:
     """ARQ ``WorkerSettings`` consumed by the ``arq`` CLI."""
 
-    functions: ClassVar[list] = [scan_object, generate_variants]
+    functions: ClassVar[list] = [scan_object, generate_variants, build_export_archive]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = redis_settings_from_config(_config)

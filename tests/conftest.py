@@ -42,11 +42,11 @@ def make_png_bytes(width: int = 10, height: int = 10) -> bytes:
 #: A real 10×10 PNG variant source — the decode-pixel guard reads 100 px from it.
 PNG_SOURCE_BYTES = make_png_bytes()
 
-import pytest
-from media_sdk_m8 import ObjectStorage
+import pytest  # noqa: E402 - worker imports must follow deterministic test env
+from media_sdk_m8 import ObjectStorage  # noqa: E402
 
-from worker.config import WorkerConfig, get_config
-from worker.scanner import ScanVerdict
+from worker.config import WorkerConfig, get_config  # noqa: E402
+from worker.scanner import ScanVerdict  # noqa: E402
 
 
 # ── anyio backend — restrict to asyncio (trio not installed) ─────────────────

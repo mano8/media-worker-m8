@@ -12,10 +12,13 @@ Run ARQ background jobs:
   interface.
 - `generate_variants` generates image variants through the `imgtools_m8` async
   API.
+- `build_export_archive` streams an authorized collection into a temporary ZIP,
+  uploads and presigns it, then reports the result to media-service.
 
 ## Responsibilities
 
-- Consume `ScanJobPayload` and `VariantJobPayload` from `media-sdk-m8`.
+- Consume `ScanJobPayload`, `VariantJobPayload`, and
+  `ExportArchiveJobPayload` from `media-sdk-m8`.
 - Delegate image computation to `imgtools_m8`, the sole imgtools consumer.
 - Report results to `media-service-m8` over its internal HTTP API with a Bearer
   service token.
