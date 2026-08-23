@@ -24,11 +24,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `media-sdk-m8` consumers on one SDK version, which the previous `<0.7.0`
   upper bound would otherwise split, since under the SDK's 0.x SemVer a minor
   is breaking and the bound is deliberate.
-  - **Not yet reflected in `worker/requirements_prod.lock`.** The lock is
-    hash-pinned against published PyPI artifacts, so it can only be regenerated
-    (`pip-compile --generate-hashes`, on Linux) once `media-sdk-m8` `0.7.0` is
-    published; until then it still pins `0.6.0`. Regenerate before building a
-    release image from this branch.
+  - **Reflected in `worker/requirements_prod.lock` after publication.** The
+    lock was regenerated with `pip-compile --generate-hashes` on Linux against
+    the published `media-sdk-m8` `0.7.0` artifacts. No second SDK release or
+    version bump is required for this work.
 
 ## [0.4.0] - 2026-08-16
 
