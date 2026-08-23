@@ -6,6 +6,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`media-sdk-m8` floor raised `>=0.6.0,<0.7.0` → `>=0.7.0,<0.8.0`.** `0.7.0`
+  adds `ObjectStorage.put_object_stream`, the write-side counterpart of
+  `stream_object`, for a consumer streaming an already-assembled payload into
+  storage. The worker does not call it — the raise keeps both `media-sdk-m8`
+  consumers on one SDK version, which the previous `<0.7.0` upper bound would
+  otherwise split, since under the SDK's 0.x SemVer a minor is breaking and the
+  bound is deliberate. No worker behavior changes.
+  - **Not yet reflected in `worker/requirements_prod.lock`.** The lock is
+    hash-pinned against published PyPI artifacts, so it can only be regenerated
+    (`pip-compile --generate-hashes`, on Linux) once `media-sdk-m8` `0.7.0` is
+    published; until then it still pins `0.6.0`. Regenerate before building a
+    release image from this branch.
+
 ## [0.4.0] - 2026-08-16
 
 ### Added
