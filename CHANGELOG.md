@@ -45,6 +45,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `build_export_archive` task above; `scan_object` and `generate_variants`
   are unchanged, and everything else is tooling, lint and documentation.
 - `.codacy.yml` excludes the repository's documentation files from analysis.
+- **Base image digest bumped** for both `worker/Dockerfile` stages,
+  `python:3.14-slim@sha256:c845af93…` → `@sha256:83ff1d24…`. The pinned digest
+  was built 2026-05-19 and carried `util-linux` `2.41-5`, which Debian has since
+  fixed in `2.41.5-0+deb13u1`; Trivy reported the resulting `CVE-2026-53612`,
+  `-53613`, `-53614` and `-53615` 36 times — the same four CVEs across the nine
+  binary packages built from that one source — and the `trivy-image` gate blocks
+  the PR on HIGH findings. Nothing was added to a `.trivyignore`: the fix
+  existed upstream, so the pin moved to collect it.
 - **CI test matrix floor raised to Python 3.12 (3.11 dropped)**, matching the
   fleet's accepted 3.12–3.14 range (`A32` follow-up). The Codecov and Codacy
   coverage uploads were conditioned on the 3.11 leg, so both moved to 3.12 with
@@ -61,6 +69,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `colorama` — a Windows-only transitive of `click` that entered the lock from a
   Windows host and was never installable in the `python:3.14-slim` image, the
   same correction `media-service-m8` applied to its own lock.
+- **4 further `RUF100` findings cleared in `tests/conftest.py`** — the same
+  unpinned-ruff drift as the 20 below, surfacing after those were fixed. The
+  four `# noqa: E402` directives on the post-env imports are unused, because
+  ruff's default set does not enable `E402`. The directives were removed rather
+  than suppressed, and the ordering constraint they documented — the worker
+  package must not be imported before the deterministic test env is set, since
+  `WorkerConfig` resolves at import time — is now stated as a comment above the
+  import block, where a rule-set change cannot silently drop it.
 - **20 `ruff check` findings fixed** (9 `I001`, 7 `RUF100`, and one each of
   `B017`, `BLE001`, `RUF012`, `SIM102`). All predated this release: `ruff.toml`
   declares only `line-length` and `exclude`, so the repository inherits ruff's

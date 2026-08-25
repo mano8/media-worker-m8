@@ -42,11 +42,16 @@ def make_png_bytes(width: int = 10, height: int = 10) -> bytes:
 #: A real 10×10 PNG variant source — the decode-pixel guard reads 100 px from it.
 PNG_SOURCE_BYTES = make_png_bytes()
 
-import pytest  # noqa: E402 - worker imports must follow deterministic test env
-from media_sdk_m8 import ObjectStorage  # noqa: E402
+# These imports are deliberately below the env block above: the worker package
+# resolves `WorkerConfig` at import time, so it must not be imported until the
+# deterministic test env is in place. Ruff's default rule set does not enable
+# E402, so a `# noqa: E402` here is an unused directive (RUF100) rather than a
+# suppression — the ordering constraint is recorded in this comment instead.
+import pytest
+from media_sdk_m8 import ObjectStorage
 
-from worker.config import WorkerConfig, get_config  # noqa: E402
-from worker.scanner import ScanVerdict  # noqa: E402
+from worker.config import WorkerConfig, get_config
+from worker.scanner import ScanVerdict
 
 
 # ── anyio backend — restrict to asyncio (trio not installed) ─────────────────
