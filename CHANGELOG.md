@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-25
+
 ### Added
 
 - **Delegated archive assembly (`P2 U11`).** `build_export_archive` validates the
@@ -14,6 +16,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   processing/completed/failed through media-service's token-guarded callback.
   Source-size drift and storage failure are terminal, clean up the deterministic
   target, and never publish a partial URL.
+- `tests/test_changelog_version_parity.py` — asserts `worker.__version__` has a
+  matching `## [x.y.z]` heading in `CHANGELOG.md` and that those headings are
+  unique, so a release can no longer ship undocumented
+  (`A32-changelog-version-parity`).
+- `.markdownlint.yaml` — the fleet-baseline `MD024` `siblings_only` rule, so the
+  Keep a Changelog format (which repeats `### Added` / `### Changed` across
+  releases) stops failing Codacy (`A34-changelog-md024-baseline`).
+- `.gitattributes` enforcing LF line endings and marking binary files.
+- `AGENTS.md` and `REPOSITORY_CONTEXT.md` documenting the worker's role,
+  boundaries, and the `imgtools_m8`-consumer-of-record rule.
 
 ### Changed
 
@@ -28,27 +40,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     lock was regenerated with `pip-compile --generate-hashes` on Linux against
     the published `media-sdk-m8` `0.7.0` artifacts. No second SDK release or
     version bump is required for this work.
-
-## [0.4.0] - 2026-08-16
-
-### Added
-
-- `tests/test_changelog_version_parity.py` — asserts `worker.__version__` has a
-  matching `## [x.y.z]` heading in `CHANGELOG.md` and that those headings are
-  unique, so a release can no longer ship undocumented
-  (`A32-changelog-version-parity`).
-- `.markdownlint.yaml` — the fleet-baseline `MD024` `siblings_only` rule, so the
-  Keep a Changelog format (which repeats `### Added` / `### Changed` across
-  releases) stops failing Codacy (`A34-changelog-md024-baseline`).
-- `.gitattributes` enforcing LF line endings and marking binary files.
-- `AGENTS.md` and `REPOSITORY_CONTEXT.md` documenting the worker's role,
-  boundaries, and the `imgtools_m8`-consumer-of-record rule.
-
-### Changed
-
 - **Version bumped `0.3.0` → `0.4.0`** to align with the fleet version matrix.
-  No runtime behavior change: everything above is tooling, lint and
-  documentation.
+  The only runtime change in this release is the additive
+  `build_export_archive` task above; `scan_object` and `generate_variants`
+  are unchanged, and everything else is tooling, lint and documentation.
 - `.codacy.yml` excludes the repository's documentation files from analysis.
 - **CI test matrix floor raised to Python 3.12 (3.11 dropped)**, matching the
   fleet's accepted 3.12–3.14 range (`A32` follow-up). The Codecov and Codacy
@@ -59,8 +54,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   raises its Python floor to 3.12), so an unbounded floor would keep pulling
   breaking minors.
 - **`imgtools_m8` floor raised `>=2.1.0` → `>=2.1.1`**, and
-  `requirements_prod.lock` regenerated on Linux against the published releases:
-  `imgtools_m8` `2.1.1`, `media-sdk-m8` `0.6.0`. The regeneration also drops
+  `requirements_prod.lock` regenerated on Linux against the published releases.
+  The lock this release ships hash-pins `imgtools_m8==2.1.1` and
+  `media-sdk-m8==0.7.0` — the `0.6.0` lock produced by this step was superseded
+  within the same release by the floor raise above. The regeneration also drops
   `colorama` — a Windows-only transitive of `click` that entered the lock from a
   Windows host and was never installable in the `python:3.14-slim` image, the
   same correction `media-service-m8` applied to its own lock.
