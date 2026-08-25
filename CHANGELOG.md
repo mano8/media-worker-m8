@@ -6,6 +6,97 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-25
+
+### Added
+
+- **Delegated archive assembly (`P2 U11`).** `build_export_archive` validates the
+  SDK-owned `ExportArchiveJobPayload`, streams source objects into a temporary
+  ZIP, streams the finished file to storage, presigns it, and reports
+  processing/completed/failed through media-service's token-guarded callback.
+  Source-size drift and storage failure are terminal, clean up the deterministic
+  target, and never publish a partial URL.
+- `tests/test_changelog_version_parity.py` — asserts `worker.__version__` has a
+  matching `## [x.y.z]` heading in `CHANGELOG.md` and that those headings are
+  unique, so a release can no longer ship undocumented
+  (`A32-changelog-version-parity`).
+- `.markdownlint.yaml` — the fleet-baseline `MD024` `siblings_only` rule, so the
+  Keep a Changelog format (which repeats `### Added` / `### Changed` across
+  releases) stops failing Codacy (`A34-changelog-md024-baseline`).
+- `.gitattributes` enforcing LF line endings and marking binary files.
+- `AGENTS.md` and `REPOSITORY_CONTEXT.md` documenting the worker's role,
+  boundaries, and the `imgtools_m8`-consumer-of-record rule.
+
+### Changed
+
+- **`media-sdk-m8` floor raised `>=0.6.0,<0.7.0` → `>=0.7.0,<0.8.0`.** `0.7.0`
+  adds `ObjectStorage.put_object_stream`, the write-side counterpart of
+  `stream_object`, for a consumer streaming an already-assembled payload into
+  storage. The archive task now calls it; the shared floor keeps both
+  `media-sdk-m8` consumers on one SDK version, which the previous `<0.7.0`
+  upper bound would otherwise split, since under the SDK's 0.x SemVer a minor
+  is breaking and the bound is deliberate.
+  - **Reflected in `worker/requirements_prod.lock` after publication.** The
+    lock was regenerated with `pip-compile --generate-hashes` on Linux against
+    the published `media-sdk-m8` `0.7.0` artifacts. No second SDK release or
+    version bump is required for this work.
+- **Version bumped `0.3.0` → `0.4.0`** to align with the fleet version matrix.
+  The only runtime change in this release is the additive
+  `build_export_archive` task above; `scan_object` and `generate_variants`
+  are unchanged, and everything else is tooling, lint and documentation.
+- `.codacy.yml` excludes the repository's documentation files from analysis.
+- **Base image digest bumped** for both `worker/Dockerfile` stages,
+  `python:3.14-slim@sha256:c845af93…` → `@sha256:83ff1d24…`. The pinned digest
+  was built 2026-05-19 and carried `util-linux` `2.41-5`, which Debian has since
+  fixed in `2.41.5-0+deb13u1`; Trivy reported the resulting `CVE-2026-53612`,
+  `-53613`, `-53614` and `-53615` 36 times — the same four CVEs across the nine
+  binary packages built from that one source — and the `trivy-image` gate blocks
+  the PR on HIGH findings. Nothing was added to a `.trivyignore`: the fix
+  existed upstream, so the pin moved to collect it.
+- **`pip`, `setuptools` and `wheel` removed from the runtime image stage.** The
+  newer base bundles `setuptools 70.3.0` (`CVE-2025-47273`), which the previous
+  digest did not — so the bump above traded 36 `util-linux` findings for 2
+  `setuptools` ones. The entrypoint is `arq` and the image is built from a
+  hash-locked set that never installs at run time, so the installer tooling is
+  pure attack surface; removing it ends that class of finding rather than
+  re-chasing a `setuptools` pin on every base-image bump. The uninstall is
+  ordered after `COPY --from=builder` so the builder tree cannot reintroduce it,
+  and is followed by an import check of the full runtime dependency graph, which
+  fails the build if anything actually needed `pkg_resources` at import time.
+- **CI test matrix floor raised to Python 3.12 (3.11 dropped)**, matching the
+  fleet's accepted 3.12–3.14 range (`A32` follow-up). The Codecov and Codacy
+  coverage uploads were conditioned on the 3.11 leg, so both moved to 3.12 with
+  it — dropping the leg alone would have silently stopped every coverage upload.
+- **`media-sdk-m8` floor raised `>=0.5.1` → `>=0.6.0,<0.7.0`.** The upper bound
+  is new: under the SDK's 0.x SemVer a minor bump is breaking (`0.6.0` itself
+  raises its Python floor to 3.12), so an unbounded floor would keep pulling
+  breaking minors.
+- **`imgtools_m8` floor raised `>=2.1.0` → `>=2.1.1`**, and
+  `requirements_prod.lock` regenerated on Linux against the published releases.
+  The lock this release ships hash-pins `imgtools_m8==2.1.1` and
+  `media-sdk-m8==0.7.0` — the `0.6.0` lock produced by this step was superseded
+  within the same release by the floor raise above. The regeneration also drops
+  `colorama` — a Windows-only transitive of `click` that entered the lock from a
+  Windows host and was never installable in the `python:3.14-slim` image, the
+  same correction `media-service-m8` applied to its own lock.
+- **4 further `RUF100` findings cleared in `tests/conftest.py`** — the same
+  unpinned-ruff drift as the 20 below, surfacing after those were fixed. The
+  four `# noqa: E402` directives on the post-env imports are unused, because
+  ruff's default set does not enable `E402`. The directives were removed rather
+  than suppressed, and the ordering constraint they documented — the worker
+  package must not be imported before the deterministic test env is set, since
+  `WorkerConfig` resolves at import time — is now stated as a comment above the
+  import block, where a rule-set change cannot silently drop it.
+- **20 `ruff check` findings fixed** (9 `I001`, 7 `RUF100`, and one each of
+  `B017`, `BLE001`, `RUF012`, `SIM102`). All predated this release: `ruff.toml`
+  declares only `line-length` and `exclude`, so the repository inherits ruff's
+  default rule set, and CI installs ruff unpinned — the default set widening in
+  ruff 0.16 turned them red. The two that are not mechanical are recorded here:
+  `worker/tasks.py`'s variant-loop `except Exception` is the job-failure
+  boundary and keeps its catch-all behaviour under an explicit `noqa` with that
+  rationale, and `tests/test_image_guard.py` now asserts the `OSError` that
+  `decoded_pixel_count` documents rather than a bare `Exception`.
+
 ## [0.3.0] - 2026-07-03
 
 ### Security

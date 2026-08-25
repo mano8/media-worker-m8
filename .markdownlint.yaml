@@ -1,0 +1,24 @@
+---
+# markdownlint configuration, also consumed by Codacy's markdownlint engine when
+# the repository is set to use its own configuration files.
+#
+# Scope note: a config file supplies markdownlint's *defaults* for every rule it
+# does not mention, so this file deliberately restates the rule this repository
+# already does not enforce (MD013). Without it, adding this file for MD024 alone
+# would turn one addressed rule into two and ~25 new findings on README.md.
+#
+# Fleet baseline (A34): every repo with a CHANGELOG.md carries this MD024
+# override, worded identically, so Codacy's markdownlint engine does not fail
+# on the Keep a Changelog format. See fastapi-m8's `.markdownlint.yaml` for the
+# canonical rationale text this is copied from. This repo's CHANGELOG.md has no
+# duplicate headings today (only `[Unreleased]` and `0.3.0`); the config is
+# added preemptively so the next release does not reintroduce the class of
+# defect this step fixes elsewhere in the fleet.
+MD024:
+  siblings_only: true
+
+# MD013/line-length — off. README.md wraps prose for readability rather than to
+# a fixed column, and carries an ASCII architecture diagram and long lines that
+# cannot be wrapped at all (25 findings). Python line length is enforced
+# separately, by ruff.
+MD013: false

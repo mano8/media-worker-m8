@@ -3,7 +3,6 @@
 import httpx
 import pytest
 from arq.connections import RedisSettings
-
 from media_sdk_m8 import ObjectStorage
 
 from worker.config import WorkerConfig
@@ -14,7 +13,7 @@ from worker.settings import (
     shutdown,
     startup,
 )
-from worker.tasks import generate_variants, scan_object
+from worker.tasks import build_export_archive, generate_variants, scan_object
 
 
 def test_redis_settings_from_config_with_user():
@@ -33,8 +32,12 @@ def test_redis_settings_from_config_blank_user_becomes_none():
     assert redis_settings_from_config(cfg).username is None
 
 
-def test_worker_settings_registers_both_tasks():
-    assert WorkerSettings.functions == [scan_object, generate_variants]
+def test_worker_settings_registers_all_tasks():
+    assert WorkerSettings.functions == [
+        scan_object,
+        generate_variants,
+        build_export_archive,
+    ]
     assert isinstance(WorkerSettings.redis_settings, RedisSettings)
     assert WorkerSettings.max_tries >= 1
     assert WorkerSettings.job_timeout >= 1

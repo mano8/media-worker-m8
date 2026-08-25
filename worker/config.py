@@ -12,10 +12,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from media_sdk_m8 import ObjectStorageConfig
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from media_sdk_m8 import ObjectStorageConfig
 
 #: Default clamd TCP port (the ``clamav`` compose service listens here).
 DEFAULT_CLAMAV_PORT = 3310
@@ -179,11 +178,13 @@ class WorkerConfig(BaseSettings):
     @model_validator(mode="after")
     def _assert_token_not_reused(self) -> "WorkerConfig":
         token = self.MEDIA_INTERNAL_SERVICE_TOKEN.get_secret_value()
-        if self.MEDIA_REDIS_PASSWORD is not None:
-            if token == self.MEDIA_REDIS_PASSWORD.get_secret_value():
-                raise ValueError(
-                    "MEDIA_INTERNAL_SERVICE_TOKEN must not equal MEDIA_REDIS_PASSWORD"
-                )
+        if (
+            self.MEDIA_REDIS_PASSWORD is not None
+            and token == self.MEDIA_REDIS_PASSWORD.get_secret_value()
+        ):
+            raise ValueError(
+                "MEDIA_INTERNAL_SERVICE_TOKEN must not equal MEDIA_REDIS_PASSWORD"
+            )
         minio_key = self.MINIO_SECRET_KEY.get_secret_value()
         if minio_key and token == minio_key:
             raise ValueError(

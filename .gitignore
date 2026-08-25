@@ -154,8 +154,7 @@ worker.env
 .venv
 env/
 
-# Local-only agent instructions (never committed)
-CLAUDE.md
+# Local-only
 venv/
 ENV/
 env.bak/

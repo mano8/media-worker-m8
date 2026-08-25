@@ -10,12 +10,20 @@ startup and handed to every task through the ARQ ``ctx`` mapping.
 """
 
 import asyncio
-from typing import Any
+import logging
+import tempfile
+import zipfile
+from typing import IO, Any
+from uuid import UUID
 
 from imgtools_m8 import process_image_async
-
-from media_sdk_m8 import ScanJobPayload, VariantJobPayload, VariantSpec
-from media_sdk_m8 import ObjectStorage
+from media_sdk_m8 import (
+    ExportArchiveJobPayload,
+    ObjectStorage,
+    ScanJobPayload,
+    VariantJobPayload,
+    VariantSpec,
+)
 
 from worker.config import WorkerConfig
 from worker.image_guard import assert_decoded_pixels_within_limit
@@ -36,6 +44,15 @@ JOB_STATUS_FAILED = "failed"
 #: enqueues variant jobs for scanned, ready image objects; this prefix is the
 #: worker's storage-only restatement of that contract.
 IMAGE_CONTENT_TYPE_PREFIX = "image/"
+
+# ── Export-archive wire/layout values (`P2 U11`) ─────────────────────────────
+EXPORT_STATUS_PROCESSING = "processing"
+EXPORT_STATUS_COMPLETED = "completed"
+EXPORT_STATUS_FAILED = "failed"
+EXPORT_ARCHIVE_CONTENT_TYPE = "application/zip"
+EXPORT_MANIFEST_ENTRY = "manifest.json"
+
+_logger = logging.getLogger(__name__)
 
 
 class UnprocessableSourceError(Exception):
@@ -195,6 +212,104 @@ async def _update_job(
     resp.raise_for_status()
 
 
+async def _update_export_job(
+    ctx: dict[str, Any],
+    job_id: UUID,
+    status: str,
+    *,
+    storage_bucket: str | None = None,
+    object_key: str | None = None,
+    size_bytes: int | None = None,
+    download_url: str | None = None,
+    error: str | None = None,
+) -> None:
+    """PATCH archive progress/result to media-service's internal surface."""
+    config: WorkerConfig = ctx["config"]
+    http = ctx["http"]
+    body: dict[str, object] = {"status": status}
+    optional = {
+        "storage_bucket": storage_bucket,
+        "object_key": object_key,
+        "size_bytes": size_bytes,
+        "download_url": download_url,
+        "error": error,
+    }
+    body.update({key: value for key, value in optional.items() if value is not None})
+    resp = await http.patch(
+        f"{config.api_base_url}/v1/internal/export-jobs/{job_id}",
+        json=body,
+        headers=_auth_headers(config),
+    )
+    resp.raise_for_status()
+
+
+def _write_export_archive(
+    storage: ObjectStorage, payload: ExportArchiveJobPayload, archive_file: IO[bytes]
+) -> int:
+    """Stream the manifest and every commissioned object into ``archive_file``."""
+    with zipfile.ZipFile(
+        archive_file, "w", zipfile.ZIP_DEFLATED, allowZip64=True
+    ) as archive:
+        archive.writestr(EXPORT_MANIFEST_ENTRY, payload.manifest_json)
+        for entry in payload.objects:
+            info = zipfile.ZipInfo(entry.archive_path)
+            info.compress_type = zipfile.ZIP_STORED
+            written = 0
+            with archive.open(info, "w") as destination:
+                for chunk in storage.stream_object(
+                    bucket=entry.source_bucket,
+                    object_key=entry.source_object_key,
+                    chunk_size=payload.stream_chunk_size,
+                ):
+                    destination.write(chunk)
+                    written += len(chunk)
+            if written != entry.size_bytes:
+                raise ValueError(
+                    f"source object size changed during export: {entry.object_id}"
+                )
+    return len(payload.objects)
+
+
+def _assemble_store_and_presign(
+    storage: ObjectStorage, payload: ExportArchiveJobPayload
+) -> tuple[int, int, str]:
+    """Build on disk, stream-upload, then presign the finished archive."""
+    with tempfile.TemporaryFile() as archive_file:
+        embedded = _write_export_archive(storage, payload, archive_file)
+        size_bytes = archive_file.tell()
+        archive_file.seek(0)
+        storage.put_object_stream(
+            bucket=payload.target_bucket,
+            object_key=payload.target_object_key,
+            data=archive_file,
+            length=size_bytes,
+            content_type=EXPORT_ARCHIVE_CONTENT_TYPE,
+        )
+    download_url = storage.presigned_get_object(
+        bucket=payload.target_bucket,
+        object_key=payload.target_object_key,
+        expires_seconds=payload.presigned_expire_seconds,
+        response_headers={
+            "response-content-disposition": (
+                f'attachment; filename="export-{payload.job_id}.zip"'
+            )
+        },
+    )
+    return embedded, size_bytes, download_url
+
+
+def _remove_partial_export(
+    storage: ObjectStorage, payload: ExportArchiveJobPayload
+) -> None:
+    """Best-effort cleanup for an archive that did not finish successfully."""
+    try:
+        storage.remove_object(
+            bucket=payload.target_bucket, object_key=payload.target_object_key
+        )
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("media.export.cleanup_failed %s: %s", payload.job_id, exc)
+
+
 async def _quarantine(ctx: dict[str, Any], payload: ScanJobPayload) -> str:
     """Purge an unsafe object and report it ``QUARANTINED``."""
     storage: ObjectStorage = ctx["storage"]
@@ -306,7 +421,9 @@ async def generate_variants(ctx: dict[str, Any], payload: VariantJobPayload) -> 
             )
             await _register_variant(ctx, payload.media_object_id, spec, result)
             created += 1
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — job-failure boundary
+        # Any render/storage failure marks the job FAILED and reports the
+        # variants already created; nothing may escape into the ARQ loop.
         await _update_job(ctx, payload.job_id, JOB_STATUS_FAILED, error=str(exc))
         return created
 
@@ -314,3 +431,45 @@ async def generate_variants(ctx: dict[str, Any], payload: VariantJobPayload) -> 
         ctx, payload.job_id, JOB_STATUS_COMPLETED, variants_created=created
     )
     return created
+
+
+async def build_export_archive(
+    ctx: dict[str, Any], payload: ExportArchiveJobPayload | dict[str, object]
+) -> int:
+    """Build, store, presign, and report one delegated collection archive.
+
+    The SDK model is deserialized at the worker trust boundary. Assembly stays
+    bounded: source objects stream chunk-by-chunk into a temporary file and the
+    finished file streams into object storage without ever becoming one in-memory
+    ``bytes`` value. A source or upload failure removes the deterministic target
+    and reports a terminal generic failure; a callback failure propagates so ARQ
+    can retry delivery without deleting a successfully completed archive.
+    """
+    job = ExportArchiveJobPayload.model_validate(payload)
+    storage: ObjectStorage = ctx["storage"]
+
+    await _update_export_job(ctx, job.job_id, EXPORT_STATUS_PROCESSING)
+    try:
+        embedded, size_bytes, download_url = await asyncio.to_thread(
+            _assemble_store_and_presign, storage, job
+        )
+    except Exception as exc:  # noqa: BLE001 — terminal assembly boundary
+        await asyncio.to_thread(_remove_partial_export, storage, job)
+        await _update_export_job(
+            ctx,
+            job.job_id,
+            EXPORT_STATUS_FAILED,
+            error=f"Archive assembly failed: {type(exc).__name__}",
+        )
+        return 0
+
+    await _update_export_job(
+        ctx,
+        job.job_id,
+        EXPORT_STATUS_COMPLETED,
+        storage_bucket=job.target_bucket,
+        object_key=job.target_object_key,
+        size_bytes=size_bytes,
+        download_url=download_url,
+    )
+    return embedded
