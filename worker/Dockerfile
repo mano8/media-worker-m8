@@ -52,9 +52,24 @@ RUN groupadd --gid 1000 appuser && \
 WORKDIR /opt
 
 COPY --from=builder /install /usr/local
+
+# Strip the installer tooling from the runtime image. The entrypoint is `arq`;
+# this image is built from a hash-locked set and never installs anything at run
+# time, so pip, setuptools and wheel are pure attack surface. They are also the
+# only remaining Trivy findings — the base image bundles `setuptools 70.3.0`
+# (CVE-2025-47273) — and removing them ends that class of finding instead of
+# re-chasing a setuptools pin on every base-image bump.
+#
+# Ordered after the COPY above so the builder's tree cannot reintroduce them,
+# and pip uninstalls itself last because the earlier uninstalls need it.
+# The import check is the guard: it fails the build if any runtime dependency
+# actually needed `pkg_resources`/`setuptools` at import time.
+RUN python -m pip uninstall -y setuptools wheel &&     python -m pip uninstall -y pip &&     python -c "import arq, clamd, httpx, minio, pydantic, PIL, media_sdk_m8, imgtools_m8"
+
 COPY --chown=appuser:appuser ./worker ./worker
 
 USER appuser
 
-# ARQ worker process — consumes scan_object / generate_variants from media Redis.
+# ARQ worker process — consumes scan_object / generate_variants /
+# build_export_archive from media Redis.
 CMD ["arq", "worker.settings.WorkerSettings"]

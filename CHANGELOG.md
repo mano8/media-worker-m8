@@ -53,6 +53,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   binary packages built from that one source — and the `trivy-image` gate blocks
   the PR on HIGH findings. Nothing was added to a `.trivyignore`: the fix
   existed upstream, so the pin moved to collect it.
+- **`pip`, `setuptools` and `wheel` removed from the runtime image stage.** The
+  newer base bundles `setuptools 70.3.0` (`CVE-2025-47273`), which the previous
+  digest did not — so the bump above traded 36 `util-linux` findings for 2
+  `setuptools` ones. The entrypoint is `arq` and the image is built from a
+  hash-locked set that never installs at run time, so the installer tooling is
+  pure attack surface; removing it ends that class of finding rather than
+  re-chasing a `setuptools` pin on every base-image bump. The uninstall is
+  ordered after `COPY --from=builder` so the builder tree cannot reintroduce it,
+  and is followed by an import check of the full runtime dependency graph, which
+  fails the build if anything actually needed `pkg_resources` at import time.
 - **CI test matrix floor raised to Python 3.12 (3.11 dropped)**, matching the
   fleet's accepted 3.12–3.14 range (`A32` follow-up). The Codecov and Codacy
   coverage uploads were conditioned on the 3.11 leg, so both moved to 3.12 with
