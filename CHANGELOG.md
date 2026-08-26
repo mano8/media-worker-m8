@@ -6,6 +6,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-26
+
+### Security
+
+- **Raised the runtime OpenSSL pin to `3.5.7-1~deb13u2`** (CVE-2026-14456 —
+  denial of service via unbounded memory growth in the QUIC server). The
+  published `0.4.0` image ships `3.5.6-1~deb13u2` and is affected; this release
+  exists only to replace those bits. No worker code, task registration, payload
+  schema or dependency floor changed — `0.4.0` and `0.4.1` are interchangeable
+  at runtime.
+- The patch block in `worker/Dockerfile` uses exact-equals apt pins, so it
+  freezes the image at whatever version it names. That is what held `0.4.0` on
+  the vulnerable OpenSSL after the advisory landed: raising the base image
+  digest alone would not have moved it. Each new OpenSSL advisory requires this
+  block to be raised explicitly.
+
 ## [0.4.0] - 2026-08-25
 
 ### Added
