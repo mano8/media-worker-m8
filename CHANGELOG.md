@@ -8,6 +8,41 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Renamed the storage settings `MINIO_*` → `S3_*`** (`T11-worker-s3-rename`,
+  object-storage backend migration plan, Wave 2). `worker/config.py`'s
+  `WorkerConfig` now declares `S3_ENDPOINT`, `S3_USE_SSL`, `S3_REGION`,
+  `S3_ACCESS_KEY` and `S3_SECRET_KEY` in place of `MINIO_HOST`/`MINIO_PORT`/
+  `MINIO_USE_SSL`/`MINIO_REGION`/`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY`, and
+  `S3_PRESIGNED_URL_EXPIRE_SECONDS` in place of
+  `MINIO_PRESIGNED_URL_EXPIRE_SECONDS`. `MINIO_HOST`/`MINIO_PORT` collapse into
+  the single `S3_ENDPOINT` netloc, mirroring `media-service-m8`'s
+  `T10-settings-s3-rename`; a new `_validate_s3_endpoint` field validator
+  (ported from that same commit) keeps the port-range guarantee the separate
+  `MINIO_PORT: int` field gave and rejects a scheme-carrying value — the
+  worker has no separate public endpoint to distinguish this from. Backend is
+  still MinIO throughout; nothing observable changes at the storage boundary,
+  only the variable names naming it.
+  **This is a pure rename, with no deprecation shim** — unlike
+  `media-service-m8`'s `Settings` (`extra="forbid"`), `WorkerConfig` already
+  uses `extra="ignore"`, so an unmigrated `MINIO_*` deployment falls back to
+  this config's own defaults/empty values rather than failing to load; the
+  production fail-closed credential gate (`_fail_closed_credentials_in_production`)
+  still refuses an empty/placeholder `S3_ACCESS_KEY`/`S3_SECRET_KEY` exactly as
+  it refused the `MINIO_*` names before. The `MEDIA_INTERNAL_SERVICE_TOKEN !=
+  S3_SECRET_KEY` isolation assertion (S8) and the `_is_unsafe` credential
+  checks are unchanged in behaviour, only in the field name they read.
+  `worker/.env.example` and `docker_compose/worker.env.example` (this
+  repository's own copies) and `README.md`'s settings table move to the new
+  names in the same commit, per the workspace env-policy sync rule; the seven
+  stack-level `worker.env.example`/`worker.env.production.example` files in
+  `media-service-m8` and `fa-ui-m8` are `T12-env-docs-sweep`'s scope, not this
+  step's.
+  Full suite 110 passed (was 99; 11 new cases cover the endpoint validator's
+  accept/reject branches, ported from `media-service-m8`'s own `S3_ENDPOINT`
+  test set), 100% coverage; ruff format/check and mypy clean; bandit clean.
+  Ruff check's 4 `E402` findings in `tests/conftest.py` are pre-existing and
+  unrelated (same finding `T9` recorded).
+
 - **Repointed to `media-sdk-m8` `0.8.0`** (`T9-consumers-repin`, object-storage
   backend migration plan, Wave 1). `worker/requirements_base.txt`'s floor
   moves `>=0.7.0,<0.8.0` → `>=0.8.0,<0.9.0`; the direct `minio>=7.2.18` pin is

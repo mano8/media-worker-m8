@@ -1,7 +1,7 @@
 """Self-contained worker configuration.
 
 The worker reads its **own** environment (it never imports media-service): the
-media-owned Redis, the MinIO/object-storage connection, the media-service
+media-owned Redis, the S3/object-storage connection, the media-service
 internal API base URL + shared service token, and the ClamAV daemon address.
 
 It builds the shared-SDK :class:`~media_sdk_m8.ObjectStorageConfig` from that
@@ -13,8 +13,11 @@ from pathlib import Path
 from typing import Literal
 
 from media_sdk_m8 import ObjectStorageConfig
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: ``S3_ENDPOINT`` default (matches the compose stacks' storage service name).
+_DEFAULT_S3_ENDPOINT = "minio:9000"
 
 #: Default clamd TCP port (the ``clamav`` compose service listens here).
 DEFAULT_CLAMAV_PORT = 3310
@@ -49,7 +52,7 @@ class WorkerConfig(BaseSettings):
     MEDIA_API_URL: str = "http://media-service:8000/media"
     #: Bearer token presented on every internal callback. Compared with
     #: ``secrets.compare_digest`` on the service side; high-entropy in prod.
-    #: Must not equal MEDIA_REDIS_PASSWORD or MINIO_SECRET_KEY.
+    #: Must not equal MEDIA_REDIS_PASSWORD or S3_SECRET_KEY.
     MEDIA_INTERNAL_SERVICE_TOKEN: SecretStr = SecretStr("changethis")
     #: Stable identity sent as ``X-Worker-Client`` on every callback so
     #: media-service can attribute requests to this specific worker instance.
@@ -64,14 +67,50 @@ class WorkerConfig(BaseSettings):
     MEDIA_REDIS_PASSWORD: SecretStr | None = None
     MEDIA_REDIS_NAMESPACE: str = "media"
 
-    # ── MinIO / object storage ────────────────────────────────────────────────
-    MINIO_HOST: str = "minio"
-    MINIO_PORT: int = Field(default=9000, ge=1, le=65535)
-    MINIO_USE_SSL: bool = False
-    MINIO_REGION: str = "eu-west-1"
-    MINIO_ACCESS_KEY: str = ""
-    MINIO_SECRET_KEY: SecretStr = SecretStr("")
-    MINIO_PRESIGNED_URL_EXPIRE_SECONDS: int = Field(default=300, ge=1)
+    # ── S3 / object storage ───────────────────────────────────────────────────
+    #: Scheme-less ``host[:port]``; TLS is selected by ``S3_USE_SSL``, never by
+    #: a URL scheme here.
+    S3_ENDPOINT: str = _DEFAULT_S3_ENDPOINT
+    S3_USE_SSL: bool = False
+    S3_REGION: str = "eu-west-1"
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: SecretStr = SecretStr("")
+    S3_PRESIGNED_URL_EXPIRE_SECONDS: int = Field(default=300, ge=1)
+
+    @field_validator("S3_ENDPOINT")
+    @classmethod
+    def _validate_s3_endpoint(cls, value: str) -> str:
+        """Require a scheme-less ``host[:port]`` endpoint.
+
+        Keeps the port-range guarantee the previous separate ``MINIO_PORT``
+        field gave, and rejects a URL early rather than letting the S3 client
+        build ``https://https://host`` at the first request. The worker has
+        no public-facing endpoint to distinguish this from, unlike
+        ``media_service``'s ``S3_PUBLIC_ENDPOINT``.
+        """
+        endpoint = value.strip()
+        if not endpoint:
+            raise ValueError(
+                "CONFIG: S3_ENDPOINT must not be empty (expected 'host:port')."
+            )
+        if "://" in endpoint:
+            raise ValueError(
+                f"CONFIG: S3_ENDPOINT must be a scheme-less 'host[:port]' value; "
+                f"got {endpoint!r} — use S3_USE_SSL for TLS."
+            )
+        host, separator, port = endpoint.rpartition(":")
+        # ``endswith(']')`` is a bracketed IPv6 literal with no port.
+        if separator and not endpoint.endswith("]"):
+            if not port.isdigit() or not 1 <= int(port) <= 65535:
+                raise ValueError(
+                    f"CONFIG: S3_ENDPOINT port must be a number between 1 and "
+                    f"65535; got {port!r}."
+                )
+            if not host:
+                raise ValueError(
+                    f"CONFIG: S3_ENDPOINT must include a host; got {endpoint!r}."
+                )
+        return endpoint
 
     # ── ClamAV daemon ─────────────────────────────────────────────────────────
     CLAMAV_HOST: str = "clamav"
@@ -156,10 +195,10 @@ class WorkerConfig(BaseSettings):
         unsafe: list[str] = []
         if _is_unsafe(self.MEDIA_INTERNAL_SERVICE_TOKEN.get_secret_value()):
             unsafe.append("MEDIA_INTERNAL_SERVICE_TOKEN")
-        if _is_unsafe(self.MINIO_ACCESS_KEY):
-            unsafe.append("MINIO_ACCESS_KEY")
-        if _is_unsafe(self.MINIO_SECRET_KEY.get_secret_value()):
-            unsafe.append("MINIO_SECRET_KEY")
+        if _is_unsafe(self.S3_ACCESS_KEY):
+            unsafe.append("S3_ACCESS_KEY")
+        if _is_unsafe(self.S3_SECRET_KEY.get_secret_value()):
+            unsafe.append("S3_SECRET_KEY")
         # Redis auth is required whenever a Redis username is configured (the
         # compose stack always sets ``appuser``); an unset/placeholder password
         # then fails closed too.
@@ -185,10 +224,10 @@ class WorkerConfig(BaseSettings):
             raise ValueError(
                 "MEDIA_INTERNAL_SERVICE_TOKEN must not equal MEDIA_REDIS_PASSWORD"
             )
-        minio_key = self.MINIO_SECRET_KEY.get_secret_value()
-        if minio_key and token == minio_key:
+        s3_key = self.S3_SECRET_KEY.get_secret_value()
+        if s3_key and token == s3_key:
             raise ValueError(
-                "MEDIA_INTERNAL_SERVICE_TOKEN must not equal MINIO_SECRET_KEY"
+                "MEDIA_INTERNAL_SERVICE_TOKEN must not equal S3_SECRET_KEY"
             )
         return self
 
@@ -214,12 +253,12 @@ class WorkerConfig(BaseSettings):
     def storage_config(self) -> ObjectStorageConfig:
         """Build the shared-SDK object-storage config from this env."""
         return ObjectStorageConfig(
-            endpoint=f"{self.MINIO_HOST}:{self.MINIO_PORT}",
-            access_key=self.MINIO_ACCESS_KEY,
-            secret_key=self.MINIO_SECRET_KEY.get_secret_value(),
-            secure=self.MINIO_USE_SSL,
-            region=self.MINIO_REGION,
-            presigned_expire_seconds=self.MINIO_PRESIGNED_URL_EXPIRE_SECONDS,
+            endpoint=self.S3_ENDPOINT,
+            access_key=self.S3_ACCESS_KEY,
+            secret_key=self.S3_SECRET_KEY.get_secret_value(),
+            secure=self.S3_USE_SSL,
+            region=self.S3_REGION,
+            presigned_expire_seconds=self.S3_PRESIGNED_URL_EXPIRE_SECONDS,
         )
 
 
