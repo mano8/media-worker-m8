@@ -18,9 +18,10 @@ Pillow>=12.2.0
 
 # Shared media SDK: object-storage client + producer↔consumer job contracts
 # Track the latest SDK so the worker stays aligned with the shared contract set.
-media-sdk-m8>=0.7.0,<0.8.0
-
-minio>=7.2.18
+# 0.8.0 (T9-consumers-repin) drops the `minio` dependency: ObjectStorage now
+# speaks boto3/botocore, so `minio` is no longer pulled in transitively and is
+# not declared here directly either.
+media-sdk-m8>=0.8.0,<0.9.0
 
 pydantic>=2.10.6
 pydantic_settings>=2.7.1

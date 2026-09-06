@@ -6,6 +6,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Repointed to `media-sdk-m8` `0.8.0`** (`T9-consumers-repin`, object-storage
+  backend migration plan, Wave 1). `worker/requirements_base.txt`'s floor
+  moves `>=0.7.0,<0.8.0` → `>=0.8.0,<0.9.0`; the direct `minio>=7.2.18` pin is
+  dropped, since `media-sdk-m8` 0.8.0 no longer depends on it and no worker
+  code imports it directly (confirmed by grep). `worker/requirements_prod.lock`
+  was regenerated with `pip-compile`; the boto3/botocore closure now flows
+  through transitively via the SDK. No worker source changed: `worker/config.py`,
+  `worker/settings.py` and `worker/tasks.py` still import `ObjectStorageConfig`
+  / `ObjectStorage` — both remain valid names in `0.8.0`
+  (`T11-worker-s3-rename` owns the `MINIO_*` → `S3_*` vocabulary rename in
+  Wave 2). Full suite 99 passed, 100% coverage; ruff/mypy/bandit clean (ruff
+  check's 4 `E402` findings in `tests/conftest.py` are pre-existing and
+  unrelated, confirmed via `git stash`). Verified against a real, pinned
+  MinIO container (`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.
+  7aa24e772`, the same tag every stack in this fleet pins): `storage_config()`
+  → `ObjectStorage` round-tripped `HeadBucket`, `PutObject`, `HeadObject`, the
+  chunked `stream_object` read, and `DeleteObject` — confirming the SDK swap
+  alone changes nothing observable at the worker's storage boundary.
+  **`media-sdk-m8@0.8.0` is not yet published to PyPI** at the time of this
+  commit (only `0.7.0` is; `pip index versions media-sdk-m8` confirms), so
+  this pins ahead of that publish — the same inversion this fleet has
+  recorded twice before for Docker image tags
+  (`.workspace/context/version-sources.md`, `media-service-m8` `2.1.0` and
+  `2.1.1`). `pip install --require-hashes -r worker/requirements_prod.lock`
+  and a Docker image build from this branch will fail until
+  `media-sdk-m8@0.8.0` is published; the regenerated lock was proven correct
+  in the interim by installing it in an isolated venv against a locally built
+  `0.8.0` wheel via `--find-links`. The window closes on publish and nothing
+  else here needs to change afterward.
+
 ## [0.4.1] - 2026-08-26
 
 ### Security
