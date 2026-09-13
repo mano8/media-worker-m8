@@ -6,6 +6,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+No pending changes.
+
+## [0.5.0] - 2026-09-13
+
+**Minor, no shim.** Object-storage backend migration plan, Waves 1-2
+(`T9-consumers-repin`, `T11-worker-s3-rename`); folded into one release here
+per the workspace's Wave 6c one-bump-per-unpublished-release rule
+(`.workspace/context/version-sources.md`) since neither step took a version
+number of its own. No Wave 3+ (SeaweedFS backend swap) content applies to
+this repository — the worker only consumes `media_sdk_m8`'s storage client,
+so the backend swap is invisible here; `T22-hygiene-dir-names` and the rest
+of Waves 3-4 touched `media-service-m8`, `fa-ui-m8` and `security-tests-m8`
+only.
+
 ### Changed
 
 - **Renamed the storage settings `MINIO_*` → `S3_*`** (`T11-worker-s3-rename`,
