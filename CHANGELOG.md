@@ -8,9 +8,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No pending changes.
 
-## [0.5.0] - 2026-09-13
+## [1.0.0] - 2026-09-13
 
-**Minor, no shim.** Object-storage backend migration plan, Waves 1-2
+**Major: the `MINIO_*` → `S3_*` rename ships with no shim.** Object-storage backend migration plan, Waves 1-2
 (`T9-consumers-repin`, `T11-worker-s3-rename`); folded into one release here
 per the workspace's Wave 6c one-bump-per-unpublished-release rule
 (`.workspace/context/version-sources.md`) since neither step took a version

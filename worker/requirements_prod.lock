@@ -188,8 +188,8 @@ jmespath==1.1.0 \
     # via
     #   boto3
     #   botocore
-media-sdk-m8==0.8.0 \
-    --hash=sha256:7c1e2dda61832f2ef1a3791b65b0d14ce9b09d6b474ac807b2233fc334af1caa
+media-sdk-m8==1.0.0 \
+    --hash=sha256:dbb470c08b418508b4c1792441236e93a0580096919f2b63bbf28d6918648669
     # via -r requirements_base.txt
 numpy==2.5.0 \
     --hash=sha256:016623417bb330d719d579daf2d6b9a01ddc52e41a9ed61a47f39fde46dcd865 \
