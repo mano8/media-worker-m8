@@ -20,6 +20,22 @@ so the backend swap is invisible here; `T22-hygiene-dir-names` and the rest
 of Waves 3-4 touched `media-service-m8`, `fa-ui-m8` and `security-tests-m8`
 only.
 
+### Security
+
+- **Patched the runtime image past the Debian 13.7 point-release CVEs.** The
+  `trivy-image` gate reported 12 findings (9 HIGH, 3 CRITICAL) against the
+  pinned `python:3.14-slim` base: `gzip` (CVE-2026-41992), `libpcre2-8-0`
+  (CVE-2026-86145, CVE-2026-89161), `libsqlite3-0` (CVE-2026-11822,
+  CVE-2026-11824) and `perl-base` (CVE-2026-13221, CRITICAL). Debian shipped
+  all four fixes in the 13.7 point release (2026-09-12) via `trixie` main, but
+  the current upstream `python:3.14-slim` digest was built 2026-09-01 and
+  still carries the vulnerable versions (verified by reading the new image's
+  `/var/lib/dpkg/status`), so a base bump could not collect them. The four
+  packages are exact-pinned in `worker/Dockerfile`'s existing apt patch
+  layer alongside the OpenSSL pins: `gzip=1.13-1+deb13u1`,
+  `libpcre2-8-0=10.46-1~deb13u2`, `libsqlite3-0=3.46.1-7+deb13u2`,
+  `perl-base=5.40.1-6+deb13u1`. No `.trivyignore` entry added.
+
 ### Changed
 
 - **Renamed the storage settings `MINIO_*` → `S3_*`** (`T11-worker-s3-rename`,

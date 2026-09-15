@@ -42,11 +42,19 @@ ENV PYTHONPATH=/opt
 # in the pinned base image). Supersedes the 3.5.6-1~deb13u2 pin that patched
 # CVE-2026-45447: these are exact-equals pins, so each new openssl advisory
 # needs this block raised or the image stays on the vulnerable version.
+# gzip (CVE-2026-41992), libpcre2-8-0 (CVE-2026-86145/89161), libsqlite3-0
+# (CVE-2026-11822/11824) and perl-base (CVE-2026-13221, CRITICAL) are pinned
+# to the Debian 13.7 point-release (2026-09-12) versions for the same reason:
+# the current python:3.14-slim digest predates that point release.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         openssl=3.5.7-1~deb13u2 \
         libssl3t64=3.5.7-1~deb13u2 \
-        openssl-provider-legacy=3.5.7-1~deb13u2 && \
+        openssl-provider-legacy=3.5.7-1~deb13u2 \
+        gzip=1.13-1+deb13u1 \
+        libpcre2-8-0=10.46-1~deb13u2 \
+        libsqlite3-0=3.46.1-7+deb13u2 \
+        perl-base=5.40.1-6+deb13u1 && \
     rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1000 appuser && \
