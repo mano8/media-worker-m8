@@ -6,6 +6,111 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+No pending changes.
+
+## [1.0.0] - 2026-09-13
+
+**Major: the `MINIO_*` → `S3_*` rename ships with no shim.** Object-storage backend migration plan, Waves 1-2
+(`T9-consumers-repin`, `T11-worker-s3-rename`); folded into one release here
+per the workspace's Wave 6c one-bump-per-unpublished-release rule
+(`.workspace/context/version-sources.md`) since neither step took a version
+number of its own. No Wave 3+ (SeaweedFS backend swap) content applies to
+this repository — the worker only consumes `media_sdk_m8`'s storage client,
+so the backend swap is invisible here; `T22-hygiene-dir-names` and the rest
+of Waves 3-4 touched `media-service-m8`, `fa-ui-m8` and `security-tests-m8`
+only.
+
+### Security
+
+- **Patched the runtime image past the Debian 13.7 point-release CVEs.** The
+  `trivy-image` gate reported 12 findings (9 HIGH, 3 CRITICAL) against the
+  pinned `python:3.14-slim` base: `gzip` (CVE-2026-41992), `libpcre2-8-0`
+  (CVE-2026-86145, CVE-2026-89161), `libsqlite3-0` (CVE-2026-11822,
+  CVE-2026-11824) and `perl-base` (CVE-2026-13221, CRITICAL). Debian shipped
+  all four fixes in the 13.7 point release (2026-09-12) via `trixie` main, but
+  the current upstream `python:3.14-slim` digest was built 2026-09-01 and
+  still carries the vulnerable versions (verified by reading the new image's
+  `/var/lib/dpkg/status`), so a base bump could not collect them. The four
+  packages are exact-pinned in `worker/Dockerfile`'s existing apt patch
+  layer alongside the OpenSSL pins: `gzip=1.13-1+deb13u1`,
+  `libpcre2-8-0=10.46-1~deb13u2`, `libsqlite3-0=3.46.1-7+deb13u2`,
+  `perl-base=5.40.1-6+deb13u1`. No `.trivyignore` entry added.
+
+### Changed
+
+- **Renamed the storage settings `MINIO_*` → `S3_*`** (`T11-worker-s3-rename`,
+  object-storage backend migration plan, Wave 2). `worker/config.py`'s
+  `WorkerConfig` now declares `S3_ENDPOINT`, `S3_USE_SSL`, `S3_REGION`,
+  `S3_ACCESS_KEY` and `S3_SECRET_KEY` in place of `MINIO_HOST`/`MINIO_PORT`/
+  `MINIO_USE_SSL`/`MINIO_REGION`/`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY`, and
+  `S3_PRESIGNED_URL_EXPIRE_SECONDS` in place of
+  `MINIO_PRESIGNED_URL_EXPIRE_SECONDS`. `MINIO_HOST`/`MINIO_PORT` collapse into
+  the single `S3_ENDPOINT` netloc, mirroring `media-service-m8`'s
+  `T10-settings-s3-rename`; a new `_validate_s3_endpoint` field validator
+  (ported from that same commit) keeps the port-range guarantee the separate
+  `MINIO_PORT: int` field gave and rejects a scheme-carrying value — the
+  worker has no separate public endpoint to distinguish this from. Backend is
+  still MinIO throughout; nothing observable changes at the storage boundary,
+  only the variable names naming it.
+  **This is a pure rename, with no deprecation shim** — unlike
+  `media-service-m8`'s `Settings` (`extra="forbid"`), `WorkerConfig` already
+  uses `extra="ignore"`, so an unmigrated `MINIO_*` deployment falls back to
+  this config's own defaults/empty values rather than failing to load; the
+  production fail-closed credential gate (`_fail_closed_credentials_in_production`)
+  still refuses an empty/placeholder `S3_ACCESS_KEY`/`S3_SECRET_KEY` exactly as
+  it refused the `MINIO_*` names before. The `MEDIA_INTERNAL_SERVICE_TOKEN !=
+  S3_SECRET_KEY` isolation assertion (S8) and the `_is_unsafe` credential
+  checks are unchanged in behaviour, only in the field name they read.
+  `worker/.env.example` and `docker_compose/worker.env.example` (this
+  repository's own copies) and `README.md`'s settings table move to the new
+  names in the same commit, per the workspace env-policy sync rule; the seven
+  stack-level `worker.env.example`/`worker.env.production.example` files in
+  `media-service-m8` and `fa-ui-m8` are `T12-env-docs-sweep`'s scope, not this
+  step's.
+  Full suite 110 passed (was 99; 11 new cases cover the endpoint validator's
+  accept/reject branches, ported from `media-service-m8`'s own `S3_ENDPOINT`
+  test set), 100% coverage; ruff format/check and mypy clean; bandit clean.
+  Ruff check's 4 `E402` findings in `tests/conftest.py` are pre-existing and
+  unrelated (same finding `T9` recorded).
+
+- **Repointed to `media-sdk-m8` `0.8.0`** (`T9-consumers-repin`, object-storage
+  backend migration plan, Wave 1). `worker/requirements_base.txt`'s floor
+  moves `>=0.7.0,<0.8.0` → `>=0.8.0,<0.9.0`; the direct `minio>=7.2.18` pin is
+  dropped, since `media-sdk-m8` 0.8.0 no longer depends on it and no worker
+  code imports it directly (confirmed by grep). `worker/requirements_prod.lock`
+  was regenerated with `pip-compile`; the boto3/botocore closure now flows
+  through transitively via the SDK. No worker source changed: `worker/config.py`,
+  `worker/settings.py` and `worker/tasks.py` still import `ObjectStorageConfig`
+  / `ObjectStorage` — both remain valid names in `0.8.0`
+  (`T11-worker-s3-rename` owns the `MINIO_*` → `S3_*` vocabulary rename in
+  Wave 2). Full suite 99 passed, 100% coverage; ruff/mypy/bandit clean (ruff
+  check's 4 `E402` findings in `tests/conftest.py` are pre-existing and
+  unrelated, confirmed via `git stash`). Verified against a real, pinned
+  MinIO container (`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.
+  7aa24e772`, the same tag every stack in this fleet pins): `storage_config()`
+  → `ObjectStorage` round-tripped `HeadBucket`, `PutObject`, `HeadObject`, the
+  chunked `stream_object` read, and `DeleteObject` — confirming the SDK swap
+  alone changes nothing observable at the worker's storage boundary.
+  **`media-sdk-m8@0.8.0` is not yet published to PyPI** at the time of this
+  commit (only `0.7.0` is; `pip index versions media-sdk-m8` confirms), so
+  this pins ahead of that publish — the same inversion this fleet has
+  recorded twice before for Docker image tags
+  (`.workspace/context/version-sources.md`, `media-service-m8` `2.1.0` and
+  `2.1.1`). `pip install --require-hashes -r worker/requirements_prod.lock`
+  and a Docker image build from this branch will fail until
+  `media-sdk-m8@0.8.0` is published; the regenerated lock was proven correct
+  in the interim by installing it in an isolated venv against a locally built
+  `0.8.0` wheel via `--find-links`. The window closed on 2026-09-15 when
+  `media-sdk-m8@1.0.0` was published: the wheel PyPI serves does not
+  hash-match the locally built one (build metadata differs), so the lock's
+  `media-sdk-m8` entry was re-pinned to the published wheel and sdist
+  hashes. `pip install --require-hashes` now resolves clean against PyPI.
+  The same publish surfaced a leftover from the `minio` drop: the runtime
+  stage's post-`pip uninstall` import guard in `worker/Dockerfile` still
+  imported `minio`, which no longer ships in the image; it now imports
+  `boto3`, the SDK's storage transport, so the guard keeps covering the
+  storage path.
+
 ## [0.4.1] - 2026-08-26
 
 ### Security

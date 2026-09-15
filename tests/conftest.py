@@ -1,9 +1,9 @@
 """Shared pytest fixtures for media-worker tests.
 
 The worker owns no database and never reaches the network in tests: the live
-seams (clamd socket, imgtools render, MinIO, the media-service HTTP API) are all
-replaced with fakes. Env vars are set before importing the worker package so
-``WorkerConfig`` resolves to deterministic test values.
+seams (clamd socket, imgtools render, object storage, the media-service HTTP
+API) are all replaced with fakes. Env vars are set before importing the worker
+package so ``WorkerConfig`` resolves to deterministic test values.
 """
 
 import io
@@ -20,9 +20,9 @@ _TEST_ENV = {
     "MEDIA_REDIS_HOST": "127.0.0.1",
     "MEDIA_REDIS_USER": "appuser",
     "MEDIA_REDIS_PASSWORD": "TestRedis!Pass1secure",
-    "MINIO_HOST": "minio",
-    "MINIO_ACCESS_KEY": "minioadmin",
-    "MINIO_SECRET_KEY": "TestMinio!Secret1",
+    "S3_ENDPOINT": "minio:9000",
+    "S3_ACCESS_KEY": "s3-admin",
+    "S3_SECRET_KEY": "TestS3!Secret1",
     "CLAMAV_HOST": "clamav",
 }
 for _k, _v in _TEST_ENV.items():

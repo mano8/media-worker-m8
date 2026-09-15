@@ -14,13 +14,12 @@ from worker.config import (
 
 def test_storage_config_maps_env_to_sdk_config():
     cfg = WorkerConfig(
-        MINIO_HOST="minio",
-        MINIO_PORT=9000,
-        MINIO_USE_SSL=True,
-        MINIO_REGION="eu-west-1",
-        MINIO_ACCESS_KEY="ak",
-        MINIO_SECRET_KEY=SecretStr("sk"),
-        MINIO_PRESIGNED_URL_EXPIRE_SECONDS=600,
+        S3_ENDPOINT="minio:9000",
+        S3_USE_SSL=True,
+        S3_REGION="eu-west-1",
+        S3_ACCESS_KEY="ak",
+        S3_SECRET_KEY=SecretStr("sk"),
+        S3_PRESIGNED_URL_EXPIRE_SECONDS=600,
     )
     storage_config = cfg.storage_config()
     assert isinstance(storage_config, ObjectStorageConfig)
@@ -30,6 +29,37 @@ def test_storage_config_maps_env_to_sdk_config():
     assert storage_config.secure is True
     assert storage_config.region == "eu-west-1"
     assert storage_config.presigned_expire_seconds == 600
+
+
+def test_s3_endpoint_default_matches_the_legacy_host_port_pair():
+    """The default netloc is exactly what MINIO_HOST/MINIO_PORT defaulted to."""
+    assert WorkerConfig().S3_ENDPOINT == "minio:9000"
+
+
+def test_s3_endpoint_with_scheme_rejected():
+    with pytest.raises(ValidationError, match="scheme-less"):
+        WorkerConfig(S3_ENDPOINT="https://storage.example.com:9000")
+
+
+def test_s3_endpoint_empty_rejected():
+    with pytest.raises(ValidationError, match="must not be empty"):
+        WorkerConfig(S3_ENDPOINT="  ")
+
+
+@pytest.mark.parametrize("endpoint", ["storage:0", "storage:65536", "storage:nine"])
+def test_s3_endpoint_invalid_port_rejected(endpoint):
+    with pytest.raises(ValidationError, match="port must be a number"):
+        WorkerConfig(S3_ENDPOINT=endpoint)
+
+
+def test_s3_endpoint_without_host_rejected():
+    with pytest.raises(ValidationError, match="must include a host"):
+        WorkerConfig(S3_ENDPOINT=":9000")
+
+
+@pytest.mark.parametrize("endpoint", ["storage", "storage:9000", "[::1]", "[::1]:9000"])
+def test_s3_endpoint_accepted_forms(endpoint):
+    assert WorkerConfig(S3_ENDPOINT=endpoint).S3_ENDPOINT == endpoint
 
 
 def test_api_base_url_strips_trailing_slash():
@@ -77,11 +107,11 @@ def test_credential_isolation_token_not_redis_password():
         )
 
 
-def test_credential_isolation_token_not_minio_key():
+def test_credential_isolation_token_not_s3_key():
     with pytest.raises(ValidationError, match="MEDIA_INTERNAL_SERVICE_TOKEN"):
         WorkerConfig(
             MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("SharedSecret!1secure"),
-            MINIO_SECRET_KEY=SecretStr("SharedSecret!1secure"),
+            S3_SECRET_KEY=SecretStr("SharedSecret!1secure"),
         )
 
 
@@ -112,7 +142,7 @@ def test_credential_isolation_distinct_credentials_accepted():
     cfg = WorkerConfig(
         MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("ServiceToken!1secure"),
         MEDIA_REDIS_PASSWORD=SecretStr("RedisPass!1secure"),
-        MINIO_SECRET_KEY=SecretStr("MinioKey!1secure"),
+        S3_SECRET_KEY=SecretStr("S3Key!1secure"),
     )
     assert cfg.service_token == "ServiceToken!1secure"
 
@@ -139,8 +169,8 @@ def test_local_mode_tolerates_placeholder_credentials():
     cfg = WorkerConfig(
         ENVIRONMENT="local",
         MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr(PLACEHOLDER_SECRET),
-        MINIO_ACCESS_KEY="",
-        MINIO_SECRET_KEY=SecretStr(""),
+        S3_ACCESS_KEY="",
+        S3_SECRET_KEY=SecretStr(""),
         MEDIA_REDIS_PASSWORD=None,
     )
     assert cfg.service_token == PLACEHOLDER_SECRET
@@ -163,16 +193,16 @@ def test_strict_mode_rejects_placeholder_service_token():
         )
 
 
-def test_production_rejects_empty_minio_access_key():
-    with pytest.raises(ValidationError, match="MINIO_ACCESS_KEY"):
-        WorkerConfig(ENVIRONMENT="production", MINIO_ACCESS_KEY="")
+def test_production_rejects_empty_s3_access_key():
+    with pytest.raises(ValidationError, match="S3_ACCESS_KEY"):
+        WorkerConfig(ENVIRONMENT="production", S3_ACCESS_KEY="")
 
 
-def test_production_rejects_placeholder_minio_secret_key():
-    with pytest.raises(ValidationError, match="MINIO_SECRET_KEY"):
+def test_production_rejects_placeholder_s3_secret_key():
+    with pytest.raises(ValidationError, match="S3_SECRET_KEY"):
         WorkerConfig(
             ENVIRONMENT="production",
-            MINIO_SECRET_KEY=SecretStr(PLACEHOLDER_SECRET),
+            S3_SECRET_KEY=SecretStr(PLACEHOLDER_SECRET),
         )
 
 
@@ -208,8 +238,8 @@ def test_production_accepts_real_credentials():
     cfg = WorkerConfig(
         ENVIRONMENT="production",
         MEDIA_INTERNAL_SERVICE_TOKEN=SecretStr("ServiceToken!1secure"),
-        MINIO_ACCESS_KEY="minioadmin",
-        MINIO_SECRET_KEY=SecretStr("MinioKey!1secure"),
+        S3_ACCESS_KEY="s3-admin",
+        S3_SECRET_KEY=SecretStr("S3Key!1secure"),
         MEDIA_REDIS_USER="appuser",
         MEDIA_REDIS_PASSWORD=SecretStr("RedisPass!1secure"),
     )

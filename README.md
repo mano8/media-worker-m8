@@ -101,7 +101,7 @@ Copy `worker/.env.example` to `worker/.env`. Every secret stays the literal
 | `MEDIA_API_URL` | `http://media-service:8000/media` | Base URL **including** the API prefix; the worker appends `/v1/internal/…`. |
 | `MEDIA_INTERNAL_SERVICE_TOKEN` | `changethis` | Must match media-service; high-entropy in prod. |
 | `MEDIA_REDIS_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_NAMESPACE` | `media_redis_cache` / `6379` / `appuser` / – / `media` | Media-owned Redis (ARQ queue). |
-| `MINIO_HOST` / `_PORT` / `_USE_SSL` / `_REGION` / `_ACCESS_KEY` / `_SECRET_KEY` | `minio` / `9000` / `false` / `eu-west-1` / – / – | Object storage. |
+| `S3_ENDPOINT` / `_USE_SSL` / `_REGION` / `_ACCESS_KEY` / `_SECRET_KEY` | `minio:9000` / `false` / `eu-west-1` / – / – | S3-compatible object storage endpoint (`host:port`, no scheme). |
 | `CLAMAV_HOST` / `_PORT` / `_TIMEOUT_SECONDS` | `clamav` / `3310` / `120` | clamd daemon address. |
 | `WORKER_MAX_TRIES` / `_JOB_TIMEOUT_SECONDS` / `_KEEP_RESULT_SECONDS` | `5` / `300` / `3600` | ARQ tuning. |
 | `WORKER_MAX_CONCURRENT_JOBS` | `4` | Max jobs run at once (ARQ `max_jobs`); bounds peak memory with the per-job ceilings. |
@@ -116,7 +116,7 @@ Copy `worker/.env.example` to `worker/.env`. Every secret stays the literal
 `STRICT_PRODUCTION_MODE=true`) the worker refuses to boot — at config import,
 not only behind the compose preflight — when any required secret is empty or
 still the `changethis` placeholder: `MEDIA_INTERNAL_SERVICE_TOKEN`,
-`MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, and (whenever `MEDIA_REDIS_USER` is set)
+`S3_ACCESS_KEY`, `S3_SECRET_KEY`, and (whenever `MEDIA_REDIS_USER` is set)
 `MEDIA_REDIS_PASSWORD`. `local` keeps tolerating the placeholders so the
 home-lab example stack still boots.
 
