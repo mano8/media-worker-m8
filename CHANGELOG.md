@@ -89,6 +89,11 @@ only.
   hash-match the locally built one (build metadata differs), so the lock's
   `media-sdk-m8` entry was re-pinned to the published wheel and sdist
   hashes. `pip install --require-hashes` now resolves clean against PyPI.
+  The same publish surfaced a leftover from the `minio` drop: the runtime
+  stage's post-`pip uninstall` import guard in `worker/Dockerfile` still
+  imported `minio`, which no longer ships in the image; it now imports
+  `boto3`, the SDK's storage transport, so the guard keeps covering the
+  storage path.
 
 ## [0.4.1] - 2026-08-26
 

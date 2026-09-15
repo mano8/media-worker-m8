@@ -67,7 +67,7 @@ COPY --from=builder /install /usr/local
 # and pip uninstalls itself last because the earlier uninstalls need it.
 # The import check is the guard: it fails the build if any runtime dependency
 # actually needed `pkg_resources`/`setuptools` at import time.
-RUN python -m pip uninstall -y setuptools wheel &&     python -m pip uninstall -y pip &&     python -c "import arq, clamd, httpx, minio, pydantic, PIL, media_sdk_m8, imgtools_m8"
+RUN python -m pip uninstall -y setuptools wheel &&     python -m pip uninstall -y pip &&     python -c "import arq, clamd, httpx, boto3, pydantic, PIL, media_sdk_m8, imgtools_m8"
 
 COPY --chown=appuser:appuser ./worker ./worker
 
