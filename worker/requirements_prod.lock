@@ -189,7 +189,8 @@ jmespath==1.1.0 \
     #   boto3
     #   botocore
 media-sdk-m8==1.0.0 \
-    --hash=sha256:dbb470c08b418508b4c1792441236e93a0580096919f2b63bbf28d6918648669
+    --hash=sha256:8f5cf98bfda102670087aeb96e9932ff38a7dc763c00572f920f3210f793de81 \
+    --hash=sha256:ed34182d36773e6ad9790ed7d2c9719414c0660dd6d109fae4c7c11838d7824b
     # via -r requirements_base.txt
 numpy==2.5.0 \
     --hash=sha256:016623417bb330d719d579daf2d6b9a01ddc52e41a9ed61a47f39fde46dcd865 \

@@ -84,8 +84,11 @@ only.
   and a Docker image build from this branch will fail until
   `media-sdk-m8@0.8.0` is published; the regenerated lock was proven correct
   in the interim by installing it in an isolated venv against a locally built
-  `0.8.0` wheel via `--find-links`. The window closes on publish and nothing
-  else here needs to change afterward.
+  `0.8.0` wheel via `--find-links`. The window closed on 2026-09-15 when
+  `media-sdk-m8@1.0.0` was published: the wheel PyPI serves does not
+  hash-match the locally built one (build metadata differs), so the lock's
+  `media-sdk-m8` entry was re-pinned to the published wheel and sdist
+  hashes. `pip install --require-hashes` now resolves clean against PyPI.
 
 ## [0.4.1] - 2026-08-26
 
