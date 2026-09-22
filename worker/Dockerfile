@@ -1,5 +1,5 @@
 # ---------- BUILD STAGE ----------
-FROM python:3.14-slim@sha256:83ff1d245a3d57d04152252d3ef9cb361494d0b3395abd65a5ebe91c401c8e83 AS builder
+FROM python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2 AS builder
 
 WORKDIR /install
 
@@ -28,7 +28,7 @@ RUN pip install --upgrade "pip==26.1.1" && \
 
 
 # ---------- RUNTIME STAGE ----------
-FROM python:3.14-slim@sha256:83ff1d245a3d57d04152252d3ef9cb361494d0b3395abd65a5ebe91c401c8e83
+FROM python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -37,25 +37,17 @@ ENV PYTHONPATH=/opt
 # No ClamAV binary or virus database is bundled — the worker is a thin clamd
 # *client* and reaches the daemon owned by the `clamav` compose service over TCP.
 
-# Patch OpenSSL packages to the fixed version (CVE-2026-14456 — DoS via
-# unbounded memory growth in the QUIC server; fixed in 3.5.7-1~deb13u2, not yet
-# in the pinned base image). Supersedes the 3.5.6-1~deb13u2 pin that patched
-# CVE-2026-45447: these are exact-equals pins, so each new openssl advisory
-# needs this block raised or the image stays on the vulnerable version.
-# gzip (CVE-2026-41992), libpcre2-8-0 (CVE-2026-86145/89161), libsqlite3-0
-# (CVE-2026-11822/11824) and perl-base (CVE-2026-13221, CRITICAL) are pinned
-# to the Debian 13.7 point-release (2026-09-12) versions for the same reason:
-# the current python:3.14-slim digest predates that point release.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        openssl=3.5.7-1~deb13u2 \
-        libssl3t64=3.5.7-1~deb13u2 \
-        openssl-provider-legacy=3.5.7-1~deb13u2 \
-        gzip=1.13-1+deb13u1 \
-        libpcre2-8-0=10.46-1~deb13u2 \
-        libsqlite3-0=3.46.1-7+deb13u2 \
-        perl-base=5.40.1-6+deb13u1 && \
-    rm -rf /var/lib/apt/lists/*
+# Debian patch layer — the one fleet form; owner: the workspace's
+# `.workspace/context/debian-patch-layer.md`. Every Debian package self-heals
+# on each build through `apt-get upgrade -y`; nothing is exact-pinned and
+# nothing is installed that the base does not already ship. The base digest
+# above moves in lock-step with the other service images, never alone. If a
+# package must ever lead the pinned base, the recorded form is an unpinned
+# install plus a `dpkg --compare-versions … ge <floor>` assertion in this same
+# RUN — never an exact `=` pin, which freezes the image on the next advisory.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid appuser --create-home appuser
