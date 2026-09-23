@@ -127,6 +127,35 @@ jobs:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
           coverage-reports: coverage.xml
 
+  test-shipped-lock:
+    name: Tests against the shipped prod lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+
+      - name: Install the shipped set exactly as the Dockerfile does
+        run: pip install --require-hashes -r worker/requirements_prod.lock
+
+      - name: Derive constraints from the lock
+        run: python scripts/shipped_lock_env.py --emit-constraints lock-constraints.txt
+
+      # PyYAML is a test-only dependency (the CI/compose policy tests parse the
+      # workflow files); the constraints file keeps it from moving anything the
+      # image ships.
+      - name: Add test tooling without moving the shipped set
+        run: pip install -c lock-constraints.txt pytest pytest-cov coverage pyyaml
+
+      - name: Verify the environment is still the shipped set
+        run: python scripts/shipped_lock_env.py --verify
+
+      - name: Run tests against the shipped set
+        run: pytest --cov-fail-under=100 -p no:cacheprovider
+
   trivy-image:
     runs-on: ubuntu-latest
     steps:

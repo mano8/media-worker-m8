@@ -8,6 +8,57 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No pending changes.
 
+## [1.0.2] - 2026-09-23
+
+Shipped-library-generation alignment — `B29-align-shipped-library-generation`
+(Wave 6d) of the workspace's consumer-alignment closure plan, finding `G22`:
+every service in the fleet was tested on a library graph none of them shipped.
+CI installs `requirements_dev.txt`'s `>=` floors, which resolve to the current
+generation; `requirements_prod.lock` pinned an older one, so the tested graph
+and the released graph had never been the same. This repository is the only one
+of the five already published at the version the fix would otherwise have
+ridden, so it takes its own patch release. No behaviour, job-contract or
+payload change.
+
+### Changed
+
+- **The shipped lock moves onto the generation CI already tests against.**
+  Exactly one declared pin moves — `pydantic` — plus `pydantic-core`, which is
+  its hard `==` peer. The lock was regenerated with
+  `pip-compile --generate-hashes --no-emit-index-url --upgrade-package pydantic==2.13.5`,
+  never a blanket `--upgrade`, so no other line in the ~50-distribution graph
+  moved. Read out of the built images (`python -c "importlib.metadata.version"`;
+  the runtime image ships no pip):
+
+  | Package | Published `1.0.1` image | This release |
+  | --- | --- | --- |
+  | `pydantic` | `2.13.4` | **`2.13.5`** |
+  | `pydantic-core` | `2.46.4` | **`2.46.5`** |
+  | `pydantic-settings` | `2.14.2` | `2.14.2` (unchanged) |
+  | `media-sdk-m8` | `1.0.0` | `1.0.0` (unchanged) |
+  | `imgtools-m8` | `2.1.1` | `2.1.1` (unchanged) |
+
+  This worker declares neither SQLAlchemy nor sqlmodel, so the other two pins
+  of the fleet-wide target generation (SQLAlchemy `2.0.54`, sqlmodel `0.0.46`)
+  have nothing to move here.
+
+### Added
+
+- **`test-shipped-lock` — a CI job that actually runs the shipped set.**
+  `pip-audit` and Trivy *scan* the lock; neither *executes* it, so until now
+  nothing in this repository ever ran a test against the graph the release
+  image installs. The new job installs
+  `worker/requirements_prod.lock` with `--require-hashes` exactly as the
+  Dockerfile does, derives a constraints file from it
+  (`scripts/shipped_lock_env.py --emit-constraints`), adds the test tooling on
+  top without dragging any shipped package forward, re-asserts that every lock
+  pin is still installed at its locked version (`--verify`), and then runs the
+  full suite at the 100 % coverage gate. Copied from `prompt-engine-m8`, the
+  one repository in the fleet that already had it.
+- **`scripts/shipped_lock_env.py`** — the lock-parsing helper the job above
+  needs: `--emit-constraints` writes `name==version` for every pin, `--verify`
+  fails if the environment has drifted from the lock in either direction.
+
 ## [1.0.1] - 2026-09-20
 
 Debian patch-layer convergence — `B23-converge-patch-layer` (Wave 6) of the
