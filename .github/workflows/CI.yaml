@@ -138,6 +138,13 @@ jobs:
         with:
           python-version: "3.14"
 
+      # pip-compile resolves for the host it runs on: a Windows regeneration
+      # adds unmarked Windows-only packages, and one made beside a sibling
+      # checkout records a --find-links into it. Both install fine on Linux,
+      # so refuse the lock before anything else in this job can pass on it.
+      - name: Refuse a lock that is not a portable PyPI-only resolve
+        run: python scripts/shipped_lock_env.py --check-portable
+
       - name: Install the shipped set exactly as the Dockerfile does
         run: pip install --require-hashes -r worker/requirements_prod.lock
 
