@@ -17,6 +17,9 @@ COPY ./worker/requirements_prod.lock .
 # build. Regenerate the lock with:
 #   pip-compile --generate-hashes --no-emit-index-url \
 #     --output-file=requirements_prod.lock requirements_prod.txt
+# inside this file's pinned base image and resolving from PyPI only: a
+# resolve on another platform or with --find-links fails CI's
+# `shipped_lock_env.py --check-portable`.
 RUN pip install --upgrade "pip==26.1.1" && \
     if [ "$ENVIRONMENT" = "development" ]; then \
         pip install --prefix=/install --no-cache-dir -r requirements_base.txt && \
