@@ -172,9 +172,9 @@ idna==3.18 \
     # via
     #   anyio
     #   httpx
-imgtools-m8==2.1.1 \
-    --hash=sha256:ec2c2e7e638fc41a00eb903b9f55d1df774381d7d1f214444cb64bd26cd711a3 \
-    --hash=sha256:fcb39d0b55ce0a1ca1224b666e161802e702a32e57debfaa4445fdeb4bc12a49
+imgtools-m8==2.1.3 \
+    --hash=sha256:269b30bccc28b3f2afab3d4fd0e570a5cfc72f10c15823d09d0f1afa930526b3 \
+    --hash=sha256:f0a5c4fb7c66da665a4f71ddcee8bdde1dacbf0b6acea888065edb95ebc7702e
     # via -r requirements_base.txt
 jmespath==1.1.0 \
     --hash=sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d \

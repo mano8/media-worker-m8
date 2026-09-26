@@ -8,7 +8,7 @@ httpx>=0.28.0
 clamd>=1.0.2
 
 # Image-variant rendering (worker-only; the sole imgtools consumer)
-imgtools_m8>=2.1.1
+imgtools_m8>=2.1.3
 
 # Pillow: used ONLY for the pre-decode image header probe (decompression-bomb
 # guard, worker/image_guard.py) — a header read, never a render. All real image

@@ -22,6 +22,15 @@ payload change.
 
 ### Changed
 
+- **`imgtools_m8` moves to the published `2.1.3`.** The floor in
+  `worker/requirements_base.txt` rises from `>=2.1.1` to `>=2.1.3` and the
+  shipped lock pins `imgtools-m8==2.1.3` with its PyPI hashes. `2.1.2` and
+  `2.1.3` change only `imgtools_m8`'s own tooling (ruff target, CI, dev
+  requirements); its declared dependencies are identical to `2.1.1`'s, so no
+  other lock line moves. Regenerated inside the Dockerfile's pinned
+  `python:3.14-slim` digest, PyPI only, with
+  `pip-compile --generate-hashes --no-emit-index-url --upgrade-package imgtools-m8`.
+
 - **The shipped lock moves onto the generation CI already tests against.**
   Exactly one declared pin moves — `pydantic` — plus `pydantic-core`, which is
   its hard `==` peer. The lock was regenerated with
